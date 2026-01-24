@@ -1,0 +1,59 @@
+# EAS upload ignore rules
+# Keep only what's needed to build on EAS.
+
+# Node & package managers
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store
+
+# Expo caches
+.expo
+.expo-shared
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.iml
+*.log
+.vscode
+.idea
+
+# Generic build outputs
+build
+/dist
+web/build
+coverage
+.tmp
+tmp
+temp
+
+# Android local/derived files
+android/.gradle
+android/build
+android/app/build
+android/app/generated
+android/app/debug.keystore
+android/app/src/debug
+android/app/src/androidTest
+
+# iOS local/derived files (if present)
+ios/build
+ios/Pods
+ios/*.xcodeproj/project.xcworkspace
+ios/*.xcworkspace/xcuserdata
+ios/*.xcodeproj/xcuserdata
+
+# Git data
+.git
+
+# Large binaries & artifacts
+*.apk
+*.aab
+*.ipa
+*.dSYM
+
+# Secrets/keystores (use EAS credentials service)
+*.keystore
+*.jks

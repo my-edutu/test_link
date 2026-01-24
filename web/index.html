@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lingualink AI - Redirecting...</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #FF8A00 0%, #FF6B00 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid rgba(255, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🗣️ Lingualink AI</div>
+        <div class="spinner"></div>
+        <h2>Completing sign in...</h2>
+        <p>Redirecting you back to the app...</p>
+        <div id="error" class="error" style="display: none;">
+            <p>Unable to redirect automatically.</p>
+            <p>Please open the Lingualink AI app manually.</p>
+        </div>
+    </div>
+
+    <script>
+        function getUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.slice(1));
+
+            const params = {};
+            for (const [key, value] of urlParams) {
+                params[key] = value;
+            }
+            for (const [key, value] of hashParams) {
+                params[key] = value;
+            }
+            return params;
+        }
+
+        function redirectToApp() {
+            const params = getUrlParams();
+            console.log('OAuth params:', params);
+
+            // Build the redirect URL with all parameters
+            const baseUrl = 'lingualink://auth-callback';
+            const urlParams = new URLSearchParams();
+
+            // Detect if user is on Android for Intent URL fallback
+            const isAndroid = /Android/i.test(navigator.userAgent);
+
+            // Add all parameters to the redirect URL
+            Object.keys(params).forEach(key => {
+                if (params[key]) {
+                    urlParams.append(key, params[key]);
+                }
+            });
+
+                        const redirectUrl = urlParams.toString()
+                ? `${baseUrl}?${urlParams.toString()}`
+                : baseUrl;
+
+            // Create Android Intent URL as fallback
+            const intentUrl = isAndroid
+                ? `intent://${redirectUrl.replace('lingualink://', '')}#Intent;scheme=lingualink;package=com.bernard.o.LinguaLink;end`
+                : redirectUrl;
+
+            console.log('Redirecting to:', redirectUrl);
+            console.log('Intent URL:', intentUrl);
+
+                        // Try multiple redirect methods
+
+            // Method 1: Direct redirect (try Intent URL first on Android)
+            window.location.href = isAndroid ? intentUrl : redirectUrl;
+
+            // Method 2: Fallback to regular scheme
+            setTimeout(() => {
+                if (isAndroid) {
+                    window.location.href = redirectUrl;
+                } else {
+                    const link = document.createElement('a');
+                    link.href = redirectUrl;
+                    link.click();
+                }
+            }, 500);
+
+            // Method 3: Show manual link after a delay
+            setTimeout(() => {
+                const errorDiv = document.getElementById('error');
+                errorDiv.innerHTML = `
+                    <p>Unable to redirect automatically.</p>
+                    <p><a href="${redirectUrl}" style="color: white; text-decoration: underline;">Click here to open Lingualink AI</a></p>
+                    <p>Or open the Lingualink AI app manually.</p>
+                `;
+                errorDiv.style.display = 'block';
+            }, 3000);
+        }
+
+        // Start the redirect process
+        if (window.location.search || window.location.hash) {
+            redirectToApp();
+        } else {
+            // No parameters, show error immediately
+            document.getElementById('error').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

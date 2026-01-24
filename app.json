@@ -1,0 +1,107 @@
+{
+  "expo": {
+    "name": "Lingualink AI",
+    "slug": "lingualink",
+    "version": "1.0.0",
+    "scheme": "lingualink",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FF8A00"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bernard.o.LinguaLink",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "lingualink",
+            "CFBundleURLSchemes": [
+              "lingualink"
+            ]
+          }
+        ],
+        "NSMicrophoneUsageDescription": "We use the microphone so you can record voice clips and go live.",
+        "NSCameraUsageDescription": "We use the camera so you can stream video live.",
+        "NSBluetoothAlwaysUsageDescription": "We use Bluetooth for audio device discovery during calls.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FF8A00"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.bernard.o.LinguaLink",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "lingualink"
+            }
+          ]
+        }
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Lingualink AI to access your microphone for voice recording."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Lingualink AI to access your camera for video recording."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF8A00",
+          "sounds": [],
+          "defaultChannel": "default"
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dff9497b-b8cb-4001-8fe8-147af06384fa"
+      },
+      "EXPO_PUBLIC_SUPABASE_URL": "https://yeaurbjtntkwbbqwjutm.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllYXVyYmp0bnRrd2JicXdqdXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2ODA1MDksImV4cCI6MjA3MTI1NjUwOX0.YdP_tWexuqvJocnVg8RzkHuT24KEMLsKx6AwzipJXtY"
+    },
+    "owner": "devbyte"
+  }
+}

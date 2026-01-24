@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx expo export --platform android --output-dir ./temp_build)",
+      "Bash(npx expo install expo-notifications expo-device expo-constants)",
+      "Skill(ralph-loop:ralph-loop)"
+    ]
+  }
+}
