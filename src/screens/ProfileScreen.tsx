@@ -1,4 +1,3 @@
-
 // src/screens/ProfileScreen.tsx
 import { useTheme } from '../context/ThemeContext';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -17,10 +16,12 @@ import {
   Alert,
   Modal,
   TextInput,
+  Share,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -30,6 +31,8 @@ import { useAuth } from '../context/AuthProvider';
 import { supabase } from '../supabaseClient';
 import LanguagePicker from '../components/LanguagePicker';
 import BadgeDetailModal, { Badge } from '../components/BadgeDetailModal';
+import EditProfileModal from '../components/EditProfileModal'; // Added EditProfileModal import
+import { badgesApi, BadgeProgressSummary } from '../services/badgesApi';
 import TrophyCase from '../components/TrophyCase';
 import EarningsCard from '../components/EarningsCard';
 import TransactionHistory from '../components/TransactionHistory';
@@ -39,10 +42,7 @@ import TopUpModal from '../components/TopUpModal';
 
 const { width, height } = Dimensions.get('window');
 
-type ProfileScreenNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<TabParamList, 'Profile'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 
 interface Props {
   navigation: ProfileScreenNavigationProp;
@@ -90,6 +90,56 @@ const THEME = {
   success: '#0bda76',
 };
 
+const AmbassadorSection = ({ navigation, user }: { navigation: any, user: UserProfile | null }) => {
+  const username = user?.username || 'user';
+  const referralCode = username.startsWith('@') ? username : `@${username}`;
+
+  const { colors } = useTheme();
+
+  const onShare = async () => {
+    try {
+      await Share.share({
+        message: `Join LinguaLink with my code ${referralCode} and we both earn rewards! \n\nDownload now: https://lingualink.ai`,
+      });
+    } catch (error) {
+      console.log('Share error:', error);
+    }
+  };
+
+  return (
+    <View style={{ padding: 16 }}>
+      <LinearGradient
+        colors={['#3B82F6', '#1D4ED8']}
+        style={{ borderRadius: 24, padding: 24, alignItems: 'center', marginBottom: 20 }}
+      >
+        <Ionicons name="gift" size={48} color="rgba(255,255,255,0.2)" style={{ position: 'absolute', top: 16, right: 16 }} />
+        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>YOUR REFERRAL CODE</Text>
+        <Text style={{ color: '#FFF', fontSize: 32, fontWeight: 'bold', marginBottom: 8 }}>{referralCode}</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, textAlign: 'center', marginBottom: 24 }}>
+          Share this code. When friends join, you earn rewards set by the admin!
+        </Text>
+
+        <TouchableOpacity
+          onPress={onShare}
+          style={{ backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+        >
+          <Ionicons name="share-social" size={16} color="#FFF" />
+          <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Share Code</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* Quick link to full dashboard */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        onPress={() => navigation.navigate('Ambassador')}
+      >
+        <Text style={{ color: colors.primary, fontWeight: 'bold', marginRight: 4 }}>View Full Ambassador Dashboard</Text>
+        <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const { user: authUser } = useAuth();
   const insets = useSafeAreaInsets();
@@ -102,6 +152,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [videoStoriesCount, setVideoStoriesCount] = useState(0);
+  const horizontalScrollRef = React.useRef<ScrollView>(null);
 
   // Avatar editing state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -112,6 +163,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
   // Badge State
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [badgeProgress, setBadgeProgress] = useState<BadgeProgressSummary | null>(null);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
   const [showBadgeModal, setShowBadgeModal] = useState(false);
 
@@ -119,14 +171,12 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<Language | undefined>(undefined);
 
-  // Bio editor state
-  const [showBioEditor, setShowBioEditor] = useState(false);
-  const [bioInput, setBioInput] = useState('');
-  const BIO_CHAR_LIMIT = 200;
+  // Profile editor state
+  const [showEditProfile, setShowEditProfile] = useState(false); // Changed from showBioEditor
 
-  // Location editor state
-  const [showLocationEditor, setShowLocationEditor] = useState(false);
-  const [locationInput, setLocationInput] = useState('');
+  // Location editor state - removed as part of EditProfileModal
+  // const [showLocationEditor, setShowLocationEditor] = useState(false);
+  // const [locationInput, setLocationInput] = useState('');
 
   // Wallet
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -234,7 +284,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           created_at
         `)
         .eq('user_id', authUser.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(20); // Optimize: Load only recent clips initially
 
       if (error) throw error;
 
@@ -305,34 +356,26 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Fetch User Badges
+  // Fetch User Badges and Progress
   const fetchBadges = async () => {
-    if (!authUser?.id) return;
     try {
-      const { data, error } = await supabase
-        .from('user_badges')
-        .select(`
-          earned_at,
-          badge:badges (
-            id,
-            name,
-            description,
-            image_url,
-            category
-          )
-        `)
-        .eq('user_id', authUser.id);
+      // Fetch earned badges
+      const userBadges = await badgesApi.getMyBadges();
 
-      if (error) throw error;
+      // Transform backend UserBadge to UI Badge
+      const formattedBadges: Badge[] = userBadges.map(ub => ({
+        id: ub.id,
+        name: ub.name,
+        description: ub.description,
+        image_url: ub.imageUrl, // Map imageUrl to image_url
+        category: ub.category,
+        earned_at: ub.earnedAt
+      }));
+      setBadges(formattedBadges);
 
-      if (data) {
-        // Flatten the structure
-        const formattedBadges: Badge[] = data.map((item: any) => ({
-          ...item.badge,
-          earned_at: item.earned_at
-        }));
-        setBadges(formattedBadges);
-      }
+      // Fetch progress
+      const progress = await badgesApi.getMyBadgeProgress();
+      setBadgeProgress(progress);
     } catch (e) {
       console.error('Error fetching badges:', e);
     }
@@ -368,57 +411,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Open bio editor prefilled
-  const openBioEditor = () => {
-    setBioInput(userProfile?.bio || '');
-    setShowBioEditor(true);
-  };
 
-  // Save bio to Supabase and local state
-  const saveBio = async () => {
-    if (!authUser?.id) return;
-    const input = bioInput.trim();
-    if (input.length > BIO_CHAR_LIMIT) {
-      Alert.alert('Bio too long', `Please keep it under ${BIO_CHAR_LIMIT} characters.`);
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ bio: input, updated_at: new Date().toISOString() })
-        .eq('id', authUser.id);
-      if (error) throw error;
-      setUserProfile(prev => prev ? { ...prev, bio: input } : prev);
-      setShowBioEditor(false);
-    } catch (e) {
-      console.error('Error saving bio:', e);
-      Alert.alert('Error', 'Failed to save bio. Please try again.');
-    }
-  };
-
-  // Open location editor prefilled
-  const openLocationEditor = () => {
-    setLocationInput(userProfile?.location || '');
-    setShowLocationEditor(true);
-  };
-
-  // Save location
-  const saveLocation = async () => {
-    if (!authUser?.id) return;
-    const input = locationInput.trim();
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ location: input || null, updated_at: new Date().toISOString() })
-        .eq('id', authUser.id);
-      if (error) throw error;
-      setUserProfile(prev => prev ? { ...prev, location: input || undefined } : prev);
-      setShowLocationEditor(false);
-    } catch (e) {
-      console.error('Error saving location:', e);
-      Alert.alert('Error', 'Failed to save location. Please try again.');
-    }
-  };
 
 
   // Load all profile data
@@ -431,8 +424,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         fetchUserProfile(),
         fetchVoiceClips(),
         fetchFollowCounts(),
-        fetchVoiceClips(),
-        fetchFollowCounts(),
+        // Removed duplicate calls
         fetchVideoStoriesCount(),
         fetchBadges(),
       ]);
@@ -530,26 +522,19 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       // Create a unique filename with user ID as folder
-      const fileExt = imageUri.split('.').pop() || 'jpg';
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${Date.now()}.${fileExt}`;
+      // Basic security: ensure only the user's folder is accessed
       const filePath = `${authUser.id}/${fileName}`;
 
-      // Read file as base64 using FileSystem
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: 'base64',
-      });
-
-      // Convert base64 to Uint8Array
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+      // Use fetch to get the blob directly (more robust than base64)
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
 
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('avatars')
-        .upload(filePath, bytes, {
+        .upload(filePath, blob, {
           contentType: `image/${fileExt}`,
           upsert: true,
         });
@@ -593,6 +578,21 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Share profile
+  const handleShareProfile = async () => {
+    if (!userProfile) return;
+    try {
+      await Share.share({
+        message: `Check out ${userProfile.full_name || userProfile.username}'s profile on LinguaLink!`,
+        title: 'Share Profile',
+      });
+    } catch (error) {
+      console.error('Error sharing profile:', error);
+    }
+  };
+
+  const openBioEditor = () => setShowEditProfile(true);
+
   // Load data when component mounts
   useEffect(() => {
     if (authUser?.id) {
@@ -614,8 +614,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.clipInfo}>
-        <Text style={styles.clipTitle} numberOfLines={1}>{clip.phrase}</Text>
-        <Text style={styles.clipMeta} numberOfLines={1}>
+        <Text style={[styles.clipTitle, { color: userTheme.text }]} numberOfLines={1}>{clip.phrase}</Text>
+        <Text style={[styles.clipMeta, { color: userTheme.textSecondary }]} numberOfLines={1}>
           {clip.likes} likes • {clip.timeAgo}
         </Text>
         <View style={styles.languageBadge}>
@@ -665,186 +665,217 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-          <Ionicons name="chevron-back" size={24} color="#FFF" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={userTheme.text} />
+          <Text style={[styles.headerTitle, { color: userTheme.text }]}>My Profile</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Profile</Text>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Settings')}>
-          <Ionicons name="settings-sharp" size={24} color="#FFF" />
+        <TouchableOpacity style={styles.settingsBtn} onPress={() => navigation.navigate('Settings')}>
+          <Ionicons name="settings-outline" size={24} color={userTheme.text} />
         </TouchableOpacity>
       </View>
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={userTheme.primary} />}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Hero Section */}
-        <View style={styles.heroSection}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatarGlow} />
-            <TouchableOpacity onPress={pickImage} style={styles.avatarWrapper}>
+        {/* Compact Profile Header */}
+        <View style={styles.compactHeader}>
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity onPress={pickImage} style={styles.compactAvatarWrapper}>
               <Image
                 source={{ uri: userProfile?.avatar_url || 'https://via.placeholder.com/150' }}
-                style={styles.avatar}
+                style={styles.compactAvatar}
               />
-            </TouchableOpacity>
-            <View style={styles.masterBadge}>
-              <Ionicons name="checkmark-circle" size={12} color="#FFF" />
-              <Text style={styles.masterBadgeText}>Language Master</Text>
-            </View>
-          </View>
-
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
-            <Text style={styles.profileHandle}>@{userProfile?.username || 'user'} • Top 1% Contributor</Text>
-            <TouchableOpacity onPress={openBioEditor}>
-              <Text style={styles.profileBio}>
-                {userProfile?.bio || "Preserving the mother tongue, one proverb at a time. #RepYourRegion"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.editBtn} onPress={openBioEditor}>
-              <Text style={styles.editBtnText}>Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.shareBtn}>
-              <Ionicons name="share-social" size={18} color="#FFF" />
-              <Text style={styles.shareBtnText}>Share Profile</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Stats Section */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, styles.glassCard]}>
-            <Text style={styles.statNumber}>{followerCount}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
-          </View>
-          <View style={[styles.statCard, styles.glassCard]}>
-            <Text style={styles.statNumber}>{followingCount}</Text>
-            <Text style={styles.statLabel}>Following</Text>
-          </View>
-          <View style={[styles.statCard, styles.activeStatCard]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={styles.activeStatNumber}>42</Text>
-              <Ionicons name="flame" size={18} color={userTheme.primary} />
-            </View>
-            <Text style={[styles.statLabel, { color: userTheme.primary }]}>Day Streak</Text>
-          </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabContainer}>
-          <View style={styles.tabRow}>
-            {['My Clips', 'Badges', 'Rewards', 'Ambassador'].map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab as any)}
-                style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-              >
-                <Text style={[styles.tabText, activeTab === tab ? [styles.tabTextActive, { color: '#FFF' }] : { color: userTheme.textSecondary }]}>
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Content List */}
-        <View style={styles.listContainer}>
-          {activeTab === 'My Clips' && (
-            voiceClips.length > 0 ? (
-              voiceClips.map(renderNewVoiceClip)
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No clips yet.</Text>
+              <View style={styles.editAvatarBadge}>
+                <Ionicons name="camera" size={12} color="#FFF" />
               </View>
-            )
-          )}
-          {activeTab === 'Badges' && (
-            <TrophyCase
-              badges={badges}
-              onBadgePress={(badge) => {
-                setSelectedBadge(badge);
-                setShowBadgeModal(true);
-              }}
-              showViewAll={false}
-              maxDisplay={0}
-            />
-          )}
-          {activeTab === 'Rewards' && authUser?.id && (
-            <View style={styles.rewardsContainer}>
-              <EarningsCard
-                userId={authUser.id}
-                onWithdrawPress={() => navigation.navigate('Withdrawal')}
-                onTopUpPress={() => setShowTopUpModal(true)}
-              />
+            </TouchableOpacity>
 
-              {/* Royalty / Remix Earnings Section */}
-              <TouchableOpacity
-                style={[styles.statCard, { marginHorizontal: 0, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                onPress={() => navigation.navigate('RemixHistory')}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                    <Ionicons name="musical-notes" size={20} color="#FFF" />
-                  </View>
-                  <View>
-                    <Text style={[styles.statNumber, { fontSize: 16 }]}>Remix Royalties</Text>
-                    <Text style={styles.statLabel}>View earnings from your clips</Text>
-                  </View>
+            <View style={styles.compactInfo}>
+              <Text style={styles.compactName}>{userProfile?.full_name || 'User'}</Text>
+              <Text style={styles.compactHandle}>@{userProfile?.username || 'user'}</Text>
+              <View style={styles.compactBadgeRow}>
+                <View style={styles.compactBadge}>
+                  <Text style={styles.compactBadgeText}>{userProfile?.primary_language || 'Member'}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={24} color={userTheme.textSecondary} />
-              </TouchableOpacity>
-
-              <PendingRewards userId={authUser.id} />
-              <TransactionHistory userId={authUser.id} />
+              </View>
             </View>
-          )}
-          {activeTab === 'Ambassador' && (
-            <AmbassadorScreen />
+
+            <TouchableOpacity style={styles.compactEditBtn} onPress={() => setShowEditProfile(true)}>
+              <Ionicons name="pencil" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Compact Stats */}
+          <View style={styles.compactStatsRow}>
+            <View style={styles.compactStat}>
+              <Text style={styles.compactStatValue}>{followerCount}</Text>
+              <Text style={styles.compactStatLabel}>Followers</Text>
+            </View>
+            <View style={styles.compactStatDivider} />
+            <View style={styles.compactStat}>
+              <Text style={styles.compactStatValue}>{followingCount}</Text>
+              <Text style={styles.compactStatLabel}>Following</Text>
+            </View>
+            <View style={styles.compactStatDivider} />
+            <View style={styles.compactStat}>
+              <Text style={styles.compactStatValue}>{voiceClips.length + videoStoriesCount}</Text>
+              <Text style={styles.compactStatLabel}>Clips</Text>
+            </View>
+          </View>
+
+          {!!userProfile?.bio && (
+            <Text style={styles.compactBio} numberOfLines={2}>{userProfile.bio}</Text>
           )}
         </View>
 
-      </ScrollView>
+        {/* Colorful Cards Navigation (Horizontal Scroll) */}
+        <View style={{ height: 90, marginBottom: 12 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+          >
+            {/* Clips Card */}
+            <TouchableOpacity
+              style={[styles.navCard, activeTab === 'My Clips' && styles.navCardActive, { backgroundColor: '#FF8A00', width: 100, height: 70, marginBottom: 0 }]}
+              onPress={() => {
+                setActiveTab('My Clips');
+                horizontalScrollRef.current?.scrollTo({ x: 0, animated: true });
+              }}
+            >
+              <LinearGradient colors={['#FF8A00', '#FF5500']} style={StyleSheet.absoluteFill} />
+              <Ionicons name="mic" size={20} color="#FFF" />
+              <Text style={[styles.navCardLabel, { fontSize: 12, marginTop: 4 }]} numberOfLines={1}>Clips</Text>
+            </TouchableOpacity>
 
-      {/* Floating Record Button */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('RecordVoice')}>
-          <Ionicons name="videocam" size={24} color="#FFF" />
-          <Text style={styles.fabText}>Record New Clip</Text>
-        </TouchableOpacity>
-      </View>
+            {/* Badges Card */}
+            <TouchableOpacity
+              style={[styles.navCard, activeTab === 'Badges' && styles.navCardActive, { backgroundColor: '#8B5CF6', width: 100, height: 70, marginBottom: 0 }]}
+              onPress={() => {
+                setActiveTab('Badges');
+                horizontalScrollRef.current?.scrollTo({ x: width, animated: true });
+              }}
+            >
+              <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={StyleSheet.absoluteFill} />
+              <Ionicons name="trophy" size={20} color="#FFF" />
+              <Text style={[styles.navCardLabel, { fontSize: 12, marginTop: 4 }]} numberOfLines={1}>Badges</Text>
+            </TouchableOpacity>
+
+            {/* Rewards Card */}
+            <TouchableOpacity
+              style={[styles.navCard, activeTab === 'Rewards' && styles.navCardActive, { backgroundColor: '#10B981', width: 100, height: 70, marginBottom: 0 }]}
+              onPress={() => {
+                setActiveTab('Rewards');
+                horizontalScrollRef.current?.scrollTo({ x: width * 2, animated: true });
+              }}
+            >
+              <LinearGradient colors={['#10B981', '#059669']} style={StyleSheet.absoluteFill} />
+              <Ionicons name="wallet" size={20} color="#FFF" />
+              <Text style={[styles.navCardLabel, { fontSize: 12, marginTop: 4 }]} numberOfLines={1}>Rewards</Text>
+            </TouchableOpacity>
+
+            {/* Ambassador Card */}
+            <TouchableOpacity
+              style={[styles.navCard, activeTab === 'Ambassador' && styles.navCardActive, { backgroundColor: '#3B82F6', width: 100, height: 70, marginBottom: 0 }]}
+              onPress={() => {
+                setActiveTab('Ambassador');
+                horizontalScrollRef.current?.scrollTo({ x: width * 3, animated: true });
+              }}
+            >
+              <LinearGradient colors={['#3B82F6', '#2563EB']} style={StyleSheet.absoluteFill} />
+              <Ionicons name="people" size={20} color="#FFF" />
+              <Text style={[styles.navCardLabel, { fontSize: 12, marginTop: 4 }]} numberOfLines={1}>Ambassador</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* Content Area - Swipable */}
+        <ScrollView
+          ref={horizontalScrollRef}
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled={true}
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(ev) => {
+            const newIndex = Math.round(ev.nativeEvent.contentOffset.x / width);
+            const tabs = ['My Clips', 'Badges', 'Rewards', 'Ambassador'];
+            if (tabs[newIndex] && tabs[newIndex] !== activeTab) {
+              setActiveTab(tabs[newIndex] as any);
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          {/* Page 1: My Clips */}
+          <View style={{ width, minHeight: 400 }}>
+            <View style={{ paddingHorizontal: 0 }}>
+              <Text style={[styles.sectionHeaderTitle, { color: userTheme.text }]}>My Voice & Video Clips</Text>
+              {voiceClips.length > 0 ? (
+                voiceClips.map(renderNewVoiceClip)
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="mic-outline" size={48} color={userTheme.textMuted} />
+                  <Text style={[styles.emptyText, { color: userTheme.textSecondary }]}>No clips shared yet.</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Page 2: Badges */}
+          <View style={{ width, minHeight: 400 }}>
+            <View style={{ paddingHorizontal: 0 }}>
+              <Text style={[styles.sectionHeaderTitle, { color: userTheme.text }]}>Achievements</Text>
+              <TrophyCase
+                badges={badges}
+                onBadgePress={(badge) => {
+                  setSelectedBadge(badge);
+                  setShowBadgeModal(true);
+                }}
+                showViewAll={false}
+                maxDisplay={0}
+              />
+            </View>
+          </View>
+
+          {/* Page 3: Rewards */}
+          <View style={{ width, minHeight: 400 }}>
+            <View style={{ paddingHorizontal: 0 }}>
+              <Text style={[styles.sectionHeaderTitle, { color: userTheme.text }]}>Earnings & Transactions</Text>
+              <View style={{ padding: 16 }}>
+                <EarningsCard
+                  onTopUp={() => setShowTopUpModal(true)}
+                />
+                <View style={{ height: 20 }} />
+                <PendingRewards />
+                <View style={{ height: 20 }} />
+                <TransactionHistory />
+              </View>
+            </View>
+          </View>
+
+          {/* Page 4: Ambassador */}
+          <View style={{ width, minHeight: 400 }}>
+            <View style={{ paddingHorizontal: 0 }}>
+              <Text style={[styles.sectionHeaderTitle, { color: userTheme.text }]}>Ambassador Program</Text>
+              <AmbassadorSection navigation={navigation} user={userProfile} />
+            </View>
+          </View>
+        </ScrollView>
+      </ScrollView>
 
       {/* Modals reuse existing state */}
       <TopUpModal
         visible={showTopUpModal}
         onClose={() => setShowTopUpModal(false)}
       />
-      <Modal visible={showBioEditor} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit Bio</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={bioInput}
-              onChangeText={setBioInput}
-              multiline
-              maxLength={BIO_CHAR_LIMIT}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowBioEditor(false)} style={styles.cancelBtn}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={saveBio} style={styles.saveBtn}>
-                <Text style={styles.saveText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+
+      <EditProfileModal
+        visible={showEditProfile}
+        onClose={() => setShowEditProfile(false)}
+        currentProfile={userProfile}
+        onUpdate={onRefresh}
+      />
 
       <BadgeDetailModal
         visible={showBadgeModal}
@@ -875,20 +906,21 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 16,
-    backgroundColor: 'rgba(28, 16, 34, 0.8)', // Semi-transparent dark
   },
+  backButton: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    marginLeft: 12,
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
+  settingsBtn: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 22,
+    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
   },
   heroSection: {
     alignItems: 'center',
@@ -952,7 +984,7 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFF',
+    color: colors.text,
     marginBottom: 4,
   },
   profileHandle: {
@@ -963,7 +995,7 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
   },
   profileBio: {
     fontSize: 14,
-    color: '#b792c9', // From design
+    color: colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 20,
@@ -1021,9 +1053,9 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
     minHeight: 100,
   },
   glassCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
   },
   activeStatCard: {
     backgroundColor: 'rgba(255, 138, 0, 0.1)', // Orange tint
@@ -1033,7 +1065,7 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFF',
+    color: colors.text,
     marginBottom: 4,
   },
   activeStatNumber: {
@@ -1044,7 +1076,7 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
   statLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#b792c9', // Muted purple text
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -1052,31 +1084,32 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
     backgroundColor: 'rgba(28, 16, 34, 0.95)',
     zIndex: 10,
     paddingTop: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   tabRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 16,
+    flexDirection: 'row', // Ensure row direction for scrollview content
+    minWidth: '100%',
   },
   tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingBottom: 16,
-    borderBottomWidth: 3,
+    paddingVertical: 12,
+    marginRight: 20,
+    borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
   tabItemActive: {
     borderBottomColor: colors.primary,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   tabTextActive: {
     color: '#FFF',
   },
   listContainer: {
-    paddingTop: 8,
+    // Removed padding, handled by pages
   },
   rewardsContainer: {
     flex: 1,
@@ -1202,6 +1235,228 @@ const createStyles = (colors: any, theme: string) => StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  statItemCompact: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statNumberCompact: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  statLabelCompact: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: '60%',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignSelf: 'center',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+
+  // New Stats Cards
+  statsCardsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  statsCardWrapper: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 4,
+  },
+  statsCardGradient: {
+    flex: 1,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 110,
+  },
+  statsCardIcon: {
+    marginBottom: 8,
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 50,
+  },
+  statsCardValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    textAlign: 'center',
+  },
+  statsCardLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 2,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  // NEW STYLES for Compact Profile & Colorful Cards
+  compactHeader: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  compactAvatarWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    marginRight: 16,
+    position: 'relative',
+  },
+  compactAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+    backgroundColor: '#333',
+  },
+  editAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.background,
+  },
+  compactInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  compactName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  compactHandle: {
+    fontSize: 14,
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  compactBadgeRow: {
+    flexDirection: 'row',
+  },
+  compactBadge: {
+    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  compactBadgeText: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  compactEditBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  compactStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  compactStatValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  compactStatLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  compactStatDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: colors.border,
+  },
+  compactBio: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+
+  // Colorful Navigation Cards
+  cardsGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 24,
+  },
+  navCard: {
+    width: 100,
+    height: 70,
+    borderRadius: 12,
+    padding: 8,
+    marginRight: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // Removed overflow: hidden to allow shadows to show
+    // Removed borderWidth to avoid clipping issues
+  },
+  navCardActive: {
+    transform: [{ scale: 1.05 }],
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.30,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  navCardLabel: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  contentArea: {
+    minHeight: 400,
+  },
+  sectionHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 16,
+    paddingHorizontal: 16,
   },
 });
 
