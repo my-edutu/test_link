@@ -33,7 +33,7 @@ export class AmbassadorController {
         @CurrentUser() user: AuthUser,
         @Body() dto: ClaimCodeDto,
     ) {
-        return this.ambassadorService.claimVanityCode(user.id, dto);
+        return this.ambassadorService.claimVanityCode(user.id, dto.code);
     }
 
     /**

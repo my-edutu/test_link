@@ -216,4 +216,24 @@ export class AmbassadorService {
             .set({ referredBy: code })
             .where(eq(schema.profiles.id, userId));
     }
+
+    /**
+     * Claim a vanity code for the ambassador.
+     */
+    async claimVanityCode(userId: string, code: string): Promise<void> {
+        // Check if code is taken by anyone else
+        const [existing] = await this.db.select().from(schema.profiles).where(eq(schema.profiles.vanityCode, code));
+
+        if (existing) {
+            if (existing.id === userId) return; // already claimed by this user
+            throw new Error('Code already taken');
+        }
+
+        await this.db
+            .update(schema.profiles)
+            .set({ vanityCode: code })
+            .where(eq(schema.profiles.id, userId));
+
+        this.logger.log(`User ${userId} claimed vanity code ${code}`);
+    }
 }
