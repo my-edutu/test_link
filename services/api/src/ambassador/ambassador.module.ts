@@ -11,5 +11,6 @@ import { DatabaseModule } from '../database/database.module';
     ],
     controllers: [AmbassadorController],
     providers: [AmbassadorService],
+    exports: [AmbassadorService],
 })
 export class AmbassadorModule { }

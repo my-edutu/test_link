@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import { useNavigation } from '@react-navigation/native';
 import { useAuth } from './AuthProvider';
 import {
     registerForPushNotificationsAsync,
@@ -14,26 +13,32 @@ interface NotificationContextType {
     expoPushToken: string | null;
     notification: Notifications.Notification | null;
     requestPermissions: () => Promise<boolean>;
+    unreadMessages: number;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
     expoPushToken: null,
     notification: null,
     requestPermissions: async () => false,
+    unreadMessages: 0,
 });
 
 export const useNotifications = () => useContext(NotificationContext);
 
 interface NotificationProviderProps {
     children: React.ReactNode;
+    navigationRef: any; // Using explicit ref passed from App.tsx
 }
 
-export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
+export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children, navigationRef }) => {
     const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
     const [notification, setNotification] = useState<Notifications.Notification | null>(null);
-    const notificationListener = useRef<Notifications.Subscription>();
-    const responseListener = useRef<Notifications.Subscription>();
-    const navigation = useNavigation<any>();
+    const [unreadMessages, setUnreadMessages] = useState<number>(0);
+    const notificationListener = useRef<Notifications.Subscription | null>(null);
+    const responseListener = useRef<Notifications.Subscription | null>(null);
+    
+    // We remove useNavigation() because this provider sits at the root, 
+    // potentially before the navigation context is fully ready or is used incorrectly.
     const { user, session } = useAuth();
 
     // Register for push notifications when user logs in
@@ -43,16 +48,28 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
                 if (token) {
                     setExpoPushToken(token);
                     // Register token with backend
-                    await registerTokenWithServer(user.id, token);
-                    console.log('Push token registered with server');
+                    try {
+                        const success = await registerTokenWithServer(user.id, token);
+                        if (success) {
+                            console.log('Push token registered with server');
+                        } else {
+                            console.warn('Push token registration returned failure');
+                        }
+                    } catch (e) {
+                         console.warn("Failed to register token", e);
+                    }
                 }
+            }).catch(e => {
+                console.warn("Push registration failed (likely missing config or emulator)", e);
             });
         }
 
         return () => {
             // Cleanup on logout
-            if (!session && user?.id) {
-                unregisterTokenFromServer(user.id);
+            if (session === null && user?.id) { // explicit check for null session
+                 try {
+                    unregisterTokenFromServer(user.id).catch(() => {});
+                 } catch (e) {}
             }
         };
     }, [user?.id, session]);
@@ -70,11 +87,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
             console.log('Notification response received:', response);
             const data = response.notification.request.content.data as NotificationData;
 
-            // Navigate to the appropriate screen
+            // Navigate to the appropriate screen using REF
             const navigationTarget = getNavigationFromNotification(data);
-            if (navigationTarget && navigation) {
+            if (navigationTarget && navigationRef?.isReady?.()) {
                 try {
-                    navigation.navigate(navigationTarget.screen, navigationTarget.params);
+                    navigationRef.navigate(navigationTarget.screen, navigationTarget.params);
                 } catch (error) {
                     console.error('Navigation error from notification:', error);
                 }
@@ -87,11 +104,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
                 console.log('App opened from notification:', response);
                 const data = response.notification.request.content.data as NotificationData;
                 const navigationTarget = getNavigationFromNotification(data);
-                if (navigationTarget && navigation) {
+                if (navigationTarget && navigationRef?.isReady?.()) {
                     // Small delay to ensure navigation is ready
                     setTimeout(() => {
                         try {
-                            navigation.navigate(navigationTarget.screen, navigationTarget.params);
+                            navigationRef.navigate(navigationTarget.screen, navigationTarget.params);
                         } catch (error) {
                             console.error('Navigation error from initial notification:', error);
                         }
@@ -102,22 +119,26 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
         return () => {
             if (notificationListener.current) {
-                Notifications.removeNotificationSubscription(notificationListener.current);
+                notificationListener.current.remove();
             }
             if (responseListener.current) {
-                Notifications.removeNotificationSubscription(responseListener.current);
+                responseListener.current.remove();
             }
         };
-    }, [navigation]);
+    }, [navigationRef]);
 
     const requestPermissions = async (): Promise<boolean> => {
-        const token = await registerForPushNotificationsAsync();
-        if (token) {
-            setExpoPushToken(token);
-            if (user?.id) {
-                await registerTokenWithServer(user.id, token);
+        try {
+            const token = await registerForPushNotificationsAsync();
+            if (token) {
+                setExpoPushToken(token);
+                if (user?.id) {
+                    await registerTokenWithServer(user.id, token).catch(() => {});
+                }
+                return true;
             }
-            return true;
+        } catch (e) {
+            console.warn("Permission request failed", e);
         }
         return false;
     };
@@ -128,6 +149,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
                 expoPushToken,
                 notification,
                 requestPermissions,
+                unreadMessages,
             }}
         >
             {children}

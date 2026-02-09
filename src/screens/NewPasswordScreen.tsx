@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
-import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,7 +27,7 @@ type NewPasswordScreenNavigationProp = NativeStackNavigationProp<
 type Props = NativeStackScreenProps<RootStackParamList, 'NewPassword'>;
 
 const NewPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { updatePassword } = useAuth();
+  const { updatePassword, signOut } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,20 +37,9 @@ const NewPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
   const [generalError, setGeneralError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
-
-  // Check if user has a valid session for password reset
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setHasSession(true);
-      } else {
-        setGeneralError('No valid session found. Please request a new password reset link.');
-      }
-    };
-    checkSession();
-  }, []);
+  // This screen was originally built for Supabase Auth recovery links.
+  // With Clerk, password resets should be handled via Clerk flows.
+  const [hasSession] = useState(true);
 
   const validatePassword = (pwd: string) => {
     if (pwd.length < 6) {
@@ -93,7 +81,7 @@ const NewPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
       }
 
       // After successful password update, sign out the user
-      await supabase.auth.signOut();
+      await signOut();
       setIsSuccess(true);
     } catch (error: any) {
       setGeneralError('An unexpected error occurred. Please try again.');

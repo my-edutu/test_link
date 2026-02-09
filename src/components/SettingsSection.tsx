@@ -1,6 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography, Layout } from '../constants/Theme';
+import { GlassCard } from './GlassCard';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   title: string;
@@ -10,13 +13,25 @@ type Props = {
 };
 
 const SettingsSection: React.FC<Props> = ({ title, icon, iconColor, children }) => {
+  const { colors, isDark } = useTheme();
+
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Ionicons name={icon} size={20} color={iconColor} />
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15` }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+        <Text style={[styles.sectionTitle, { color: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)' }]}>{title}</Text>
       </View>
-      <View style={styles.sectionContent}>{children}</View>
+      <GlassCard
+        intensity={10}
+        style={[
+          styles.sectionContent,
+          { borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }
+        ]}
+      >
+        {children}
+      </GlassCard>
     </View>
   );
 };
@@ -24,28 +39,32 @@ const SettingsSection: React.FC<Props> = ({ title, icon, iconColor, children }) 
 const styles = StyleSheet.create({
   section: {
     marginTop: 24,
+    paddingHorizontal: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     marginBottom: 12,
+    marginLeft: 4,
+  },
+  iconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginLeft: 8,
+    ...Typography.h4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontSize: 12,
   },
   sectionContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: Layout.radius.l,
+    overflow: 'hidden',
+    borderWidth: 1,
   },
 });
 

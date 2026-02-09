@@ -15,7 +15,10 @@ import * as schema from './schema';
                 if (!connectionString) {
                     console.warn('DATABASE_URL not found, using default developer Postgres URL');
                 }
-                const client = postgres(connectionString || 'postgres://postgres:postgres@localhost:5432/postgres');
+                // Using { prepare: false } for Supabase pooler compatibility (Transaction mode)
+                const client = postgres(connectionString || 'postgres://postgres:postgres@localhost:5432/postgres', {
+                    prepare: false
+                });
                 return drizzle(client, { schema });
             },
         },

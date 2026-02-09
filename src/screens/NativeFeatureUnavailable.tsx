@@ -7,11 +7,11 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 

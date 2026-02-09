@@ -20,6 +20,8 @@ import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../../App';
+import { useTheme } from '../context/ThemeContext';
+import { Colors } from '../constants/Theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -160,6 +162,7 @@ const mockStories: Story[] = [
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'All' | 'Voice' | 'Stories' | 'Lab'>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -176,7 +179,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           key={index}
           style={[
             styles.waveformBar,
-            { height: height * 0.8 }
+            { height: height * 0.8, backgroundColor: Colors.primary }
           ]}
         />
       ))}
@@ -241,7 +244,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         setSound(null);
       }
       setIsPlaying(null);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -313,7 +316,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowMoreOptions(null)}
         />
-        <View style={styles.moreOptionsContent}>
+        <View style={[styles.moreOptionsContent, { backgroundColor: colors.card }]}>
           <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
@@ -322,8 +325,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             }}
           >
             <Ionicons name="people" size={20} color="#10B981" />
-            <Text style={styles.optionText}>Create Duet</Text>
-            <Text style={styles.optionDescription}>Respond to this clip</Text>
+            <Text style={[styles.optionText, { color: colors.text }]}>Create Duet</Text>
+            <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>Respond to this clip</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -334,35 +337,35 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             }}
           >
             <Ionicons name="repeat" size={20} color="#8B5CF6" />
-            <Text style={styles.optionText}>Remix</Text>
-            <Text style={styles.optionDescription}>Your version of this phrase</Text>
+            <Text style={[styles.optionText, { color: colors.text }]}>Remix</Text>
+            <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>Your version of this phrase</Text>
           </TouchableOpacity>
 
           {canValidate(clip) && clip.needsValidation && (
             <>
-              <View style={styles.optionDivider} />
-              <Text style={styles.validationHeader}>Validate Pronunciation</Text>
+              <View style={[styles.optionDivider, { backgroundColor: colors.border }]} />
+              <Text style={[styles.validationHeader, { color: colors.textSecondary }]}>Validate Pronunciation</Text>
               <TouchableOpacity
-                style={[styles.optionItem, styles.validationOption]}
+                style={[styles.optionItem, styles.validationOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB' }]}
                 onPress={() => handleValidate(clip.id, true)}
               >
                 <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                <Text style={styles.optionText}>Correct</Text>
-                <Text style={styles.optionDescription}>Pronunciation is accurate</Text>
+                <Text style={[styles.optionText, { color: colors.text }]}>Correct</Text>
+                <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>Pronunciation is accurate</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.optionItem, styles.validationOption]}
+                style={[styles.optionItem, styles.validationOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB' }]}
                 onPress={() => handleValidate(clip.id, false)}
               >
                 <Ionicons name="close-circle" size={20} color="#EF4444" />
-                <Text style={styles.optionText}>Needs Work</Text>
-                <Text style={styles.optionDescription}>Could be improved</Text>
+                <Text style={[styles.optionText, { color: colors.text }]}>Needs Work</Text>
+                <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>Could be improved</Text>
               </TouchableOpacity>
             </>
           )}
 
-          <View style={styles.optionDivider} />
+          <View style={[styles.optionDivider, { backgroundColor: colors.border }]} />
           <TouchableOpacity
             style={styles.optionItem}
             onPress={() => {
@@ -371,8 +374,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             }}
           >
             <Ionicons name="flag" size={20} color="#EF4444" />
-            <Text style={styles.optionText}>Report</Text>
-            <Text style={styles.optionDescription}>Report inappropriate content</Text>
+            <Text style={[styles.optionText, { color: colors.text }]}>Report</Text>
+            <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>Report inappropriate content</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -380,45 +383,45 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderVoiceClip = (clip: VoiceClip) => (
-    <View key={clip.id} style={styles.voiceClipCard}>
+    <View key={clip.id} style={[styles.voiceClipCard, { backgroundColor: colors.card }]}>
       <View style={styles.voiceClipHeader}>
         <View style={styles.userInfo}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}>
             <Text style={styles.avatarText}>{clip.user.avatar}</Text>
           </View>
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>{clip.user.name}</Text>
-            <View style={styles.languageTag}>
+            <Text style={[styles.userName, { color: colors.text }]}>{clip.user.name}</Text>
+            <View style={[styles.languageTag, { backgroundColor: isDark ? 'rgba(254, 243, 226, 0.1)' : '#FEF3E2' }]}>
               <Text style={styles.languageText}>{clip.user.language}</Text>
             </View>
           </View>
         </View>
         <View style={styles.headerRight}>
           {clip.needsValidation && (
-            <View style={styles.validationBadge}>
+            <View style={[styles.validationBadge, { backgroundColor: isDark ? 'rgba(254, 243, 226, 0.1)' : '#FEF3E2' }]}>
               <Ionicons name="help-circle" size={12} color="#F59E0B" />
               <Text style={styles.validationBadgeText}>Needs Validation</Text>
             </View>
           )}
           {clip.isValidated && (
-            <View style={styles.verifiedBadge}>
+            <View style={[styles.verifiedBadge, { backgroundColor: isDark ? 'rgba(236, 253, 245, 0.1)' : '#ECFDF5' }]}>
               <Ionicons name="checkmark-circle" size={12} color="#10B981" />
               <Text style={styles.verifiedBadgeText}>Verified</Text>
             </View>
           )}
-          <Text style={styles.timeAgo}>{clip.timeAgo}</Text>
+          <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{clip.timeAgo}</Text>
         </View>
       </View>
 
       <View style={styles.phraseContainer}>
-        <Text style={styles.phrase}>{clip.phrase}</Text>
-        <Text style={styles.translation}>{clip.translation}</Text>
+        <Text style={[styles.phrase, { color: colors.text }]}>{clip.phrase}</Text>
+        <Text style={[styles.translation, { color: colors.textSecondary }]}>{clip.translation}</Text>
       </View>
 
       {renderWaveform(clip.audioWaveform)}
 
       <TouchableOpacity
-        style={styles.playButton}
+        style={[styles.playButton, { backgroundColor: isDark ? '#374151' : '#1F2937' }]}
         onPress={() => {
           if (isPlaying === clip.id) {
             stopAudio();
@@ -441,15 +444,15 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           style={styles.actionButton}
           onPress={() => handleLike(clip.id, 'voice')}
         >
-          <Ionicons name="heart-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{clip.likes}</Text>
+          <Ionicons name="heart-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>{clip.likes}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleComment(clip.id, 'voice')}
         >
-          <Ionicons name="chatbubble-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{clip.comments}</Text>
+          <Ionicons name="chatbubble-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>{clip.comments}</Text>
         </TouchableOpacity>
         {canValidate(clip) && (
           <TouchableOpacity style={styles.actionButton}>
@@ -458,20 +461,20 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               size={20}
               color={clip.needsValidation ? "#F59E0B" : "#10B981"}
             />
-            <Text style={styles.actionText}>{clip.validations}</Text>
+            <Text style={[styles.actionText, { color: colors.textSecondary }]}>{clip.validations}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleShare(clip.id, 'voice')}
         >
-          <Ionicons name="share-outline" size={20} color="#666" />
+          <Ionicons name="share-outline" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.moreButton}
           onPress={() => setShowMoreOptions(clip.id)}
         >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -480,14 +483,14 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderStory = (story: Story) => (
-    <View key={story.id} style={styles.storyCard}>
+    <View key={story.id} style={[styles.storyCard, { backgroundColor: colors.card }]}>
       <View style={styles.storyHeader}>
         <View style={styles.userInfo}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}>
             <Text style={styles.avatarText}>{story.user.avatar}</Text>
           </View>
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>{story.user.name}</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>{story.user.name}</Text>
             <View style={styles.storyTypeContainer}>
               {story.isAIStory && (
                 <Ionicons name="sparkles" size={12} color="#8B5CF6" />
@@ -498,13 +501,13 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         </View>
-        <Text style={styles.timeAgo}>{story.timeAgo}</Text>
+        <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{story.timeAgo}</Text>
       </View>
 
       <View style={styles.storyContent}>
         <View style={styles.storyThumbnail}>
           <View style={styles.thumbnailPlaceholder}>
-            <Text style={styles.storyTitle}>{story.title}</Text>
+            <Text style={[styles.storyTitle, { color: '#374151' }]}>{story.title}</Text>
           </View>
           <TouchableOpacity style={styles.storyPlayButton}>
             <Ionicons name="play" size={32} color="#FFFFFF" />
@@ -520,25 +523,25 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           style={styles.actionButton}
           onPress={() => handleLike(story.id, 'story')}
         >
-          <Ionicons name="heart-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{story.likes}</Text>
+          <Ionicons name="heart-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>{story.likes}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleComment(story.id, 'story')}
         >
-          <Ionicons name="chatbubble-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{story.comments}</Text>
+          <Ionicons name="chatbubble-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>{story.comments}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleShare(story.id, 'story')}
         >
-          <Ionicons name="share-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{story.shares}</Text>
+          <Ionicons name="share-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>{story.shares}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.moreButton}>
-          <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -556,27 +559,27 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
-        <View style={styles.createModalContent}>
-          <Text style={styles.createModalTitle}>What would you like to create?</Text>
+        <View style={[styles.createModalContent, { backgroundColor: colors.card }]}>
+          <Text style={[styles.createModalTitle, { color: colors.text }]}>What would you like to create?</Text>
 
           <TouchableOpacity
-            style={styles.createOption}
+            style={[styles.createOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8F9FA' }]}
             onPress={() => {
               setShowCreateModal(false);
               navigation.navigate('RecordVoice');
             }}
           >
-            <View style={styles.createOptionIcon}>
-              <Ionicons name="mic" size={24} color="#FF8A00" />
+            <View style={[styles.createOptionIcon, { backgroundColor: isDark ? 'rgba(254, 243, 226, 0.1)' : '#FEF3E2' }]}>
+              <Ionicons name="mic" size={24} color={Colors.primary} />
             </View>
             <View style={styles.createOptionContent}>
-              <Text style={styles.createOptionTitle}>Share a phrase or read a prompt</Text>
-              <Text style={styles.createOptionDescription}>Record in your language</Text>
+              <Text style={[styles.createOptionTitle, { color: colors.text }]}>Share a phrase or read a prompt</Text>
+              <Text style={[styles.createOptionDescription, { color: colors.textSecondary }]}>Record in your language</Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.createOption}
+            style={[styles.createOption, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8F9FA' }]}
             onPress={() => {
               setShowCreateModal(false);
               navigation.navigate('TellStory');
@@ -586,8 +589,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="book" size={24} color="#8B5CF6" />
             </View>
             <View style={styles.createOptionContent}>
-              <Text style={styles.createOptionTitle}>Turn your voice into life</Text>
-              <Text style={styles.createOptionDescription}>Create animated stories</Text>
+              <Text style={[styles.createOptionTitle, { color: colors.text }]}>Turn your voice into life</Text>
+              <Text style={[styles.createOptionDescription, { color: colors.textSecondary }]}>Create animated stories</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -614,11 +617,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + height * 0.02, backgroundColor: Colors.primary }]}>
         <View style={styles.headerContent}>
           <Ionicons name="mic" size={24} color="#FFFFFF" />
           <Text style={styles.headerTitle}>Lingualink AI</Text>
@@ -629,18 +632,19 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         {['All', 'Voice', 'Stories', 'Lab'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[
               styles.tab,
-              activeTab === tab && styles.activeTab
+              activeTab === tab && { backgroundColor: Colors.primary }
             ]}
             onPress={() => setActiveTab(tab as typeof activeTab)}
           >
             <Text style={[
               styles.tabText,
+              { color: colors.textSecondary },
               activeTab === tab && styles.activeTabText
             ]}>
               {tab}
@@ -661,7 +665,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Floating Create Button */}
       <TouchableOpacity
-        style={styles.createButton}
+        style={[styles.createButton, { backgroundColor: Colors.primary }]}
         onPress={() => setShowCreateModal(true)}
       >
         <Ionicons name="add" size={24} color="#FFFFFF" />
@@ -675,10 +679,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   header: {
-    backgroundColor: '#FF8A00',
     paddingBottom: height * 0.02,
     paddingHorizontal: width * 0.05,
   },
@@ -694,11 +696,9 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
     paddingHorizontal: width * 0.05,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   tab: {
     paddingHorizontal: 16,
@@ -706,13 +706,9 @@ const styles = StyleSheet.create({
     marginRight: 16,
     borderRadius: 20,
   },
-  activeTab: {
-    backgroundColor: '#FF8A00',
-  },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
   },
   activeTabText: {
     color: '#FFFFFF',
@@ -723,7 +719,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   voiceClipCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -734,7 +729,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   storyCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -765,7 +759,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -779,11 +772,9 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 2,
   },
   languageTag: {
-    backgroundColor: '#FEF3E2',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
@@ -810,7 +801,6 @@ const styles = StyleSheet.create({
   validationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3E2',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -825,7 +815,6 @@ const styles = StyleSheet.create({
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ECFDF5',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -839,7 +828,6 @@ const styles = StyleSheet.create({
   },
   timeAgo: {
     fontSize: 12,
-    color: '#9CA3AF',
   },
   phraseContainer: {
     marginBottom: 16,
@@ -847,13 +835,11 @@ const styles = StyleSheet.create({
   phrase: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1F2937',
     marginBottom: 4,
     textAlign: 'center',
   },
   translation: {
     fontSize: 14,
-    color: '#6B7280',
     textAlign: 'center',
   },
   waveformContainer: {
@@ -865,7 +851,6 @@ const styles = StyleSheet.create({
   },
   waveformBar: {
     width: 3,
-    backgroundColor: '#FF8A00',
     marginHorizontal: 1,
     borderRadius: 2,
   },
@@ -873,7 +858,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#1F2937',
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
@@ -898,7 +882,6 @@ const styles = StyleSheet.create({
   storyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#374151',
     textAlign: 'center',
   },
   storyPlayButton: {
@@ -941,7 +924,6 @@ const styles = StyleSheet.create({
   actionText: {
     marginLeft: 4,
     fontSize: 14,
-    color: '#666',
   },
   moreButton: {
     padding: 4,
@@ -953,7 +935,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#FF8A00',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -975,7 +956,6 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   createModalContent: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -984,14 +964,12 @@ const styles = StyleSheet.create({
   createModalTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 24,
     textAlign: 'center',
   },
   createOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -1000,7 +978,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FEF3E2',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -1014,15 +991,12 @@ const styles = StyleSheet.create({
   createOptionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 2,
   },
   createOptionDescription: {
     fontSize: 14,
-    color: '#6B7280',
   },
   moreOptionsContent: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -1037,34 +1011,28 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#1F2937',
     marginLeft: 12,
     flex: 1,
   },
   optionDescription: {
     fontSize: 12,
-    color: '#6B7280',
     marginLeft: 12,
   },
   optionDivider: {
     height: 1,
-    backgroundColor: '#E5E5E5',
     marginVertical: 8,
   },
   validationHeader: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
     marginTop: 8,
     marginBottom: 4,
     paddingHorizontal: 4,
   },
   validationOption: {
-    backgroundColor: '#F9FAFB',
     borderRadius: 8,
     marginVertical: 2,
   },
 });
 
-// Make sure to export as default
 export default HomeScreen;

@@ -1,28 +1,73 @@
 {
   "cli": {
     "version": ">= 16.17.4",
-    "appVersionSource": "remote"
+    "promptToConfigurePushNotifications": true
   },
   "build": {
+    "base": {
+      "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://app.posthog.com"
+      }
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_API_URL": "https://lingualink-backend-otu6.onrender.com/api/v1",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cmVuZXdlZC1sbGFtYS02NC5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yeaurbjtntkwbbqwjutm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllYXVyYmp0bnRrd2JicXdqdXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2ODA1MDksImV4cCI6MjA3MTI1NjUwOX0.YdP_tWexuqvJocnVg8RzkHuT24KEMLsKx6AwzipJXtY",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_UwjgmvyTBEfjTv4LTgIUq9GUKpDKOTuS7e4UWV4imaI",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
+      },
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "simulator": true
       }
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cmVuZXdlZC1sbGFtYS02NC5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yeaurbjtntkwbbqwjutm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllYXVyYmp0bnRrd2JicXdqdXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2ODA1MDksImV4cCI6MjA3MTI1NjUwOX0.YdP_tWexuqvJocnVg8RzkHuT24KEMLsKx6AwzipJXtY",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_UwjgmvyTBEfjTv4LTgIUq9GUKpDKOTuS7e4UWV4imaI",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
+        "EXPO_PUBLIC_API_URL": "https://lingualink-backend-otu6.onrender.com/api/v1"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "autoIncrement": true
+      "extends": "base",
+      "autoIncrement": true,
+      "env": {
+        "APP_ENV": "production"
+      },
+      "android": {
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease"
+      },
+      "ios": {
+        "autoIncrement": true
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

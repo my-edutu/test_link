@@ -5,43 +5,19 @@
  */
 
 import { authFetch, parseResponse, getCurrentUserId } from './authFetch';
-
-export interface ValidationResult {
-    success: boolean;
-    validationId?: string;
-    pointsEarned?: number;
-    message: string;
-    consensusReached?: boolean;
-}
-
-export interface ValidationQueueItem {
-    id: string;
-    phrase: string;
-    language: string;
-    dialect?: string;
-    audio_url: string;
-    validations_count: number;
-}
-
-export interface ValidationHistoryItem {
-    id: string;
-    voiceClipId: string;
-    isApproved: boolean;
-    createdAt: string;
-}
-
-export interface EarningsSummary {
-    balance: number;
-    totalEarned: number;
-    trustScore: number;
-    validatorTier: string;
-}
-
-export interface TopUpResult {
-    authorization_url: string;
-    access_code: string;
-    reference: string;
-}
+import {
+    ValidationResult,
+    ValidationQueueItem,
+    ValidationHistoryItem,
+    EarningsSummary,
+    TopUpResult,
+    RemixStats,
+    WithdrawalHistoryItem,
+    BalanceSummary,
+    BankItem,
+    BankResolveResult,
+    LinkedBank
+} from '../types/monetization.types';
 
 class MonetizationApi {
     /**
@@ -75,7 +51,8 @@ class MonetizationApi {
      */
     async flagForReview(
         voiceClipId: string,
-        reason: string
+        reason: string,
+        additionalNotes?: string
     ): Promise<{ success: boolean; message: string }> {
         try {
             const response = await authFetch('/monetization/flag', {
@@ -83,6 +60,7 @@ class MonetizationApi {
                 body: JSON.stringify({
                     voiceClipId,
                     reason,
+                    additionalNotes,
                 }),
             });
 
@@ -182,10 +160,10 @@ class MonetizationApi {
     /**
      * Get remix stats for the current user.
      */
-    async getRemixStats(): Promise<any> {
+    async getRemixStats(): Promise<RemixStats> {
         try {
             const response = await authFetch('/monetization/remix/stats');
-            return parseResponse(response);
+            return parseResponse<RemixStats>(response);
         } catch (error) {
             console.error('MonetizationApi.getRemixStats error:', error);
             throw error;
@@ -205,7 +183,7 @@ class MonetizationApi {
         accountNumber: string,
         accountName: string,
         idempotencyKey?: string
-    ): Promise<any> {
+    ): Promise<{ success: boolean; data?: { reference: string } }> {
         try {
             const response = await authFetch('/withdrawals', {
                 method: 'POST',
@@ -218,7 +196,7 @@ class MonetizationApi {
                 }),
             });
 
-            return parseResponse(response);
+            return parseResponse<{ success: boolean; data?: { reference: string } }>(response);
         } catch (error) {
             console.error('MonetizationApi.requestWithdrawal error:', error);
             throw error;
@@ -228,10 +206,10 @@ class MonetizationApi {
     /**
      * Get withdrawal history.
      */
-    async getWithdrawals(limit: number = 20): Promise<any> {
+    async getWithdrawals(limit: number = 20): Promise<{ success: boolean; data: WithdrawalHistoryItem[] }> {
         try {
             const response = await authFetch(`/withdrawals?limit=${limit}`);
-            return parseResponse(response);
+            return parseResponse<{ success: boolean; data: WithdrawalHistoryItem[] }>(response);
         } catch (error) {
             console.error('MonetizationApi.getWithdrawals error:', error);
             throw error;
@@ -241,10 +219,10 @@ class MonetizationApi {
     /**
      * Get balance summary.
      */
-    async getBalanceSummary(): Promise<any> {
+    async getBalanceSummary(): Promise<{ success: boolean; data: BalanceSummary }> {
         try {
             const response = await authFetch('/withdrawals/balance');
-            return parseResponse(response);
+            return parseResponse<{ success: boolean; data: BalanceSummary }>(response);
         } catch (error) {
             console.error('MonetizationApi.getBalanceSummary error:', error);
             throw error;
@@ -254,11 +232,11 @@ class MonetizationApi {
     /**
      * Get list of Nigerian banks.
      */
-    async getBankList(): Promise<any[]> {
+    async getBankList(): Promise<BankItem[]> {
         try {
             // This is a public endpoint
             const response = await authFetch('/bank/list', { requireAuth: false });
-            const data = await parseResponse<{ success: boolean; data: any[] }>(response);
+            const data = await parseResponse<{ success: boolean; data: BankItem[] }>(response);
             return data.data;
         } catch (error) {
             console.error('MonetizationApi.getBankList error:', error);
@@ -272,7 +250,7 @@ class MonetizationApi {
     async resolveBank(
         accountNumber: string,
         bankCode: string
-    ): Promise<{ accountNumber: string; accountName: string; bankCode: string; bankName: string }> {
+    ): Promise<BankResolveResult> {
         try {
             const response = await authFetch('/bank/resolve', {
                 method: 'POST',
@@ -282,7 +260,7 @@ class MonetizationApi {
                 }),
             });
 
-            const data = await parseResponse<{ success: boolean; data: any }>(response);
+            const data = await parseResponse<{ success: boolean; data: BankResolveResult }>(response);
             return data.data;
         } catch (error) {
             console.error('MonetizationApi.resolveBank error:', error);
@@ -295,7 +273,8 @@ class MonetizationApi {
      */
     async linkBank(
         accountNumber: string,
-        bankCode: string
+        bankCode: string,
+        manualDetails?: { bankName: string; accountName: string }
     ): Promise<{ accountName: string; bankName: string }> {
         try {
             const response = await authFetch('/bank/link', {
@@ -303,10 +282,11 @@ class MonetizationApi {
                 body: JSON.stringify({
                     accountNumber,
                     bankCode,
+                    manualDetails
                 }),
             });
 
-            const data = await parseResponse<{ success: boolean; data: any }>(response);
+            const data = await parseResponse<{ success: boolean; data: { accountName: string; bankName: string } }>(response);
             return data.data;
         } catch (error) {
             console.error('MonetizationApi.linkBank error:', error);
@@ -317,10 +297,10 @@ class MonetizationApi {
     /**
      * Get linked bank account.
      */
-    async getLinkedBank(): Promise<any> {
+    async getLinkedBank(): Promise<LinkedBank | null> {
         try {
             const response = await authFetch('/bank/linked');
-            const data = await parseResponse<{ success: boolean; data: any }>(response);
+            const data = await parseResponse<{ success: boolean; data: LinkedBank | null }>(response);
             return data.data;
         } catch (error) {
             console.error('MonetizationApi.getLinkedBank error:', error);
@@ -340,6 +320,19 @@ class MonetizationApi {
         } catch (error) {
             console.error('MonetizationApi.unlinkBank error:', error);
             throw error;
+        }
+    }
+    /**
+     * Get app configuration value by key.
+     */
+    async getAppConfig<T>(key: string): Promise<T | null> {
+        try {
+            const response = await authFetch(`/config/${key}`, { requireAuth: false });
+            const data = await parseResponse<{ success: boolean; data: T }>(response);
+            return data.data;
+        } catch (error) {
+            console.error(`MonetizationApi.getAppConfig(${key}) error:`, error);
+            return null;
         }
     }
 }

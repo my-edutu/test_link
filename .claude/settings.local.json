@@ -5,7 +5,27 @@
       "Bash(npx tsc:*)",
       "Bash(npx expo export --platform android --output-dir ./temp_build)",
       "Bash(npx expo install expo-notifications expo-device expo-constants)",
-      "Skill(ralph-loop:ralph-loop)"
+      "Skill(ralph-loop:ralph-loop)",
+      "Bash(npx expo start --clear)",
+      "Bash(npx expo prebuild:*)",
+      "Bash(winget install:*)",
+      "Bash(cmd /c \"where java 2>nul\")",
+      "Bash(dir:*)",
+      "Bash(dir \"C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-*\" /b)",
+      "Bash(powershell -Command:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(done)",
+      "Bash(npx expo-doctor)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx expo install expo-font expo-asset)",
+      "Bash(npx expo install:*)",
+      "Bash(npm ls:*)",
+      "Bash(node:*)",
+      "Bash(npx eas-cli build:configure:*)",
+      "WebFetch(domain:docs.livekit.io)",
+      "Bash(ls:*)",
+      "Bash(npx expo start:*)"
     ]
   }
 }

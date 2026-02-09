@@ -1,18 +1,14 @@
-// src/screens/SettingsScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Dimensions,
   Switch,
   Alert,
-  TextInput,
-  Modal,
   Share,
   Platform,
   ToastAndroid,
@@ -29,9 +25,13 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import NotificationToggle from '../components/NotificationToggle';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme, ThemeMode } from '../context/ThemeContext';
+import { Colors, Typography, Layout, Gradients } from '../constants/Theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -50,7 +50,9 @@ interface Language {
 
 const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { signOut, user } = useAuth();
+  const { signOut, user, updatePassword } = useAuth();
+  const { colors, isDark, themeMode, setThemeMode } = useTheme();
+
   const [notificationSettings, setNotificationSettings] = useState({
     likes: true,
     duets: true,
@@ -74,7 +76,6 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Referral state
   const [referralCode, setReferralCode] = useState<string>('');
   const [inviteCount, setInviteCount] = useState<number>(0);
   const [loadingReferral, setLoadingReferral] = useState<boolean>(false);
@@ -83,29 +84,43 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     const loadReferral = async () => {
       if (!user?.id) return;
+
       setLoadingReferral(true);
       try {
+        // Fetch the latest username from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+
+        const username = profile?.username || user.username || user.user_metadata?.username || 'user';
+        const code = username.startsWith('@') ? username : `@${username}`;
+        setReferralCode(code);
+
+        // We still fetch the ID to count referrals
         const { data: codeRow } = await supabase
           .from('referral_codes')
-          .select('code, id')
+          .select('id')
           .eq('owner_user_id', user.id)
           .maybeSingle();
 
-        if (codeRow?.code) setReferralCode(codeRow.code);
+        if (codeRow?.id) {
+          const { data: countRows } = await supabase
+            .from('referrals')
+            .select('id')
+            .eq('referral_code_id', codeRow.id);
 
-        const { data: countRows } = await supabase
-          .from('referrals')
-          .select('id, referral_code_id')
-          .in('referral_code_id', codeRow?.id ? [codeRow.id] : ['00000000-0000-0000-0000-000000000000']);
-
-        setInviteCount(countRows ? countRows.length : 0);
+          setInviteCount(countRows ? countRows.length : 0);
+        }
       } catch (e) {
+        console.error('Error loading referral:', e);
       } finally {
         setLoadingReferral(false);
       }
     };
     loadReferral();
-  }, [user?.id]);
+  }, [user?.id, user?.username, user?.user_metadata?.username]);
 
   const handleCopyReferralCode = async () => {
     if (!referralCode) return;
@@ -120,8 +135,8 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleShareReferral = async () => {
     if (!referralCode) return;
-    const message = `Join me on Lingualink AI! Use my code ${referralCode} when you sign up. lingualink://signup?code=${referralCode}`;
-    try { await Share.share({ message }); } catch {}
+    const message = `Join me on Lingualink AI! Use my code ${referralCode} when you sign up. https://lingualink.ai`;
+    try { await Share.share({ message }); } catch { }
   };
 
   const handleLogout = () => {
@@ -135,34 +150,33 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            // AuthGate will switch to the Auth stack automatically after sign out
           }
         }
       ]
     );
   };
 
-  // moved SettingsSection and SettingsItem into components
-
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      {isDark && <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />}
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
+      <View style={[styles.header, { paddingTop: insets.top + 20, backgroundColor: isDark ? 'transparent' : colors.surface }]}>
+        {isDark && <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 24 }} />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
         {/* Account Section */}
         <SettingsSection
           title="Account"
           icon="person-outline"
-          iconColor="#FF8A00"
+          iconColor={Colors.primary}
         >
           <SettingsItem
             title="Edit Profile"
@@ -179,7 +193,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
                 setProfileUsername(data?.username || '');
                 setProfileBio(data?.bio || '');
                 setProfileLocation(data?.location || '');
-              } catch {}
+              } catch { }
               setShowEditProfile(true);
             }}
           />
@@ -199,36 +213,95 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           icon="gift-outline"
           iconColor="#F59E0B"
         >
-          <View style={styles.settingsItem}>
+          <View style={[styles.settingsItem, { borderBottomColor: colors.border }]}>
             <View style={styles.settingsItemContent}>
-              <Text style={styles.settingsItemTitle}>Your invite code</Text>
-              <Text style={styles.settingsItemSubtitle}>
+              <Text style={[styles.settingsItemTitle, { color: colors.text }]}>Your invite code</Text>
+              <Text style={[styles.settingsItemSubtitle, { color: colors.textSecondary }]}>
                 {loadingReferral ? 'Loading…' : (referralCode || 'Generating on first sign-in…')}
                 {copied ? '   Copied' : ''}
               </Text>
             </View>
             <View style={{ flexDirection: 'row' }}>
-              <TouchableOpacity onPress={handleCopyReferralCode} style={{ marginRight: 12 }}>
-                <Ionicons name="copy-outline" size={20} color="#1F2937" />
+              <TouchableOpacity onPress={handleCopyReferralCode} style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleShareReferral}>
-                <Ionicons name="share-social-outline" size={20} color="#1F2937" />
+              <TouchableOpacity onPress={handleShareReferral} style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <Ionicons name="share-social-outline" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.settingsItem}
+          <SettingsItem
+            title="View your invites"
+            subtitle={loadingReferral ? 'Loading…' : `${inviteCount} joined with your code`}
             onPress={() => navigation.navigate('Invites' as never)}
-          >
-            <View style={styles.settingsItemContent}>
-              <Text style={styles.settingsItemTitle}>View your invites</Text>
-              <Text style={styles.settingsItemSubtitle}>
-                {loadingReferral ? 'Loading…' : `${inviteCount} joined with your code`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+          />
+        </SettingsSection>
+
+        {/* Appearance */}
+        <SettingsSection
+          title="Appearance"
+          icon="color-palette-outline"
+          iconColor="#8B5CF6"
+        >
+          <View style={[styles.themeSelector, { backgroundColor: colors.inputBackground }]}>
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'light' && styles.themeOptionActive,
+                themeMode === 'light' && { backgroundColor: colors.primary }
+              ]}
+              onPress={() => setThemeMode('light')}
+            >
+              <Ionicons
+                name="sunny"
+                size={20}
+                color={themeMode === 'light' ? '#FFF' : colors.textSecondary}
+              />
+              <Text style={[
+                styles.themeOptionText,
+                { color: themeMode === 'light' ? '#FFF' : colors.textSecondary }
+              ]}>Light</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'dark' && styles.themeOptionActive,
+                themeMode === 'dark' && { backgroundColor: colors.primary }
+              ]}
+              onPress={() => setThemeMode('dark')}
+            >
+              <Ionicons
+                name="moon"
+                size={20}
+                color={themeMode === 'dark' ? '#FFF' : colors.textSecondary}
+              />
+              <Text style={[
+                styles.themeOptionText,
+                { color: themeMode === 'dark' ? '#FFF' : colors.textSecondary }
+              ]}>Dark</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'system' && styles.themeOptionActive,
+                themeMode === 'system' && { backgroundColor: colors.primary }
+              ]}
+              onPress={() => setThemeMode('system')}
+            >
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color={themeMode === 'system' ? '#FFF' : colors.textSecondary}
+              />
+              <Text style={[
+                styles.themeOptionText,
+                { color: themeMode === 'system' ? '#FFF' : colors.textSecondary }
+              ]}>System</Text>
+            </TouchableOpacity>
+          </View>
         </SettingsSection>
 
         {/* Language Settings */}
@@ -244,7 +317,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           />
           <SettingsItem
             title="Add Languages"
-            onPress={() => Alert.alert('Add Languages', 'Coming soon! You\'ll be able to add multiple languages.')}
+            onPress={() => Alert.alert('Add Languages', 'Coming soon!')}
           />
         </SettingsSection>
 
@@ -260,7 +333,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             value={notificationSettings.likes}
             onChange={async (value) => {
               setNotificationSettings(prev => ({ ...prev, likes: value }));
-              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, likes: value } }).eq('id', user.id); } catch {}
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, likes: value } }).eq('id', user.id); } catch { }
             }}
           />
           <NotificationToggle
@@ -269,7 +342,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             value={notificationSettings.duets}
             onChange={async (value) => {
               setNotificationSettings(prev => ({ ...prev, duets: value }));
-              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, duets: value } }).eq('id', user.id); } catch {}
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, duets: value } }).eq('id', user.id); } catch { }
             }}
           />
           <NotificationToggle
@@ -278,7 +351,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             value={notificationSettings.validations}
             onChange={async (value) => {
               setNotificationSettings(prev => ({ ...prev, validations: value }));
-              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, validations: value } }).eq('id', user.id); } catch {}
+              try { if (user?.id) await supabase.from('profiles').update({ notification_prefs: { ...notificationSettings, validations: value } }).eq('id', user.id); } catch { }
             }}
           />
         </SettingsSection>
@@ -290,13 +363,8 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           iconColor="#6B7280"
         >
           <SettingsItem
-            title="Notifications"
-            subtitle="Notifications are disabled in Expo Go"
-            onPress={() => {}}
-          />
-          <SettingsItem
             title="Version"
-            subtitle="1.0.0"
+            subtitle="1.0.0 (Premium Edit)"
             showArrow={false}
           />
           <SettingsItem
@@ -318,17 +386,15 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
-
-        <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Language Picker Modal */}
+      {/* Modals */}
       <LanguagePicker
         visible={showLanguagePicker}
         onClose={() => setShowLanguagePicker(false)}
         onSelect={async (language) => {
           setPrimaryLanguage(language);
-          try { if (user?.id) await supabase.from('profiles').update({ primary_language: language.dialect ? `${language.name} / ${language.dialect}` : language.name, updated_at: new Date().toISOString() }).eq('id', user.id); } catch {}
+          try { if (user?.id) await supabase.from('profiles').update({ primary_language: language.dialect ? `${language.name} / ${language.dialect}` : language.name, updated_at: new Date().toISOString() }).eq('id', user.id); } catch { }
         }}
         selectedLanguage={primaryLanguage}
       />
@@ -391,8 +457,8 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
               return;
             }
             setSavingPassword(true);
-            const { error } = await supabase.auth.updateUser({ password: newPassword });
-            if (error) throw error;
+            const err = await updatePassword(newPassword);
+            if (err) throw new Error(err);
             Alert.alert('Success', 'Password updated');
             setShowChangePassword(false);
             setNewPassword(''); setConfirmPassword('');
@@ -401,100 +467,108 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           } finally { setSavingPassword(false); }
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    // backgroundColor handled by style prop
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    overflow: 'hidden',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    ...Typography.h2,
+    // color handled by prop
   },
   content: {
     flex: 1,
-  },
-  section: {
-    marginTop: 24,
-    marginHorizontal: width * 0.05,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginLeft: 8,
-  },
-  sectionContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    // borderBottomColor handled by prop
   },
   settingsItemContent: {
     flex: 1,
   },
   settingsItemTitle: {
+    ...Typography.body,
     fontSize: 16,
     fontWeight: '500',
-    color: '#1F2937',
-    marginBottom: 2,
+    // color handled by prop (or inline)
   },
   settingsItemSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 18,
+    ...Typography.body,
+    fontSize: 13,
+    // color handled online 
+    marginTop: 2,
+  },
+  iconBtn: {
+    padding: 8,
+    marginLeft: 4,
+    borderRadius: 8,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderRadius: Layout.radius.m,
     padding: 16,
-    marginHorizontal: width * 0.05,
-    marginTop: 32,
+    marginHorizontal: 20,
+    marginTop: 40,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
+    borderColor: 'rgba(239, 68, 68, 0.2)',
   },
   logoutText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#EF4444',
     marginLeft: 8,
   },
-  bottomPadding: {
-    height: 40,
+  themeSelector: {
+    flexDirection: 'row',
+    margin: 16,
+    borderRadius: 12,
+    padding: 4,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  themeOptionActive: {
+    shadowColor: '#FF8A00',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  themeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

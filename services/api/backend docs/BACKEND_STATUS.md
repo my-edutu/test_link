@@ -1,6 +1,6 @@
 # Backend Feature Status
 
-> **Last Updated**: 2026-01-21
+> **Last Updated**: 2026-01-26
 > 
 > This document tracks the implementation status of all NestJS backend features.
 
@@ -26,14 +26,15 @@
 | **Status** | 🟢 Complete |
 | **Module Path** | `src/database/` |
 | **Description** | Drizzle ORM connection to Supabase Postgres |
-| **Tables** | All schemas in `schema.ts` |
+| **Tables** | All schemas in `schema.ts` now exist in Supabase |
 | **Dependencies** | `drizzle-orm`, `pg`, Supabase Postgres |
-| **Last Updated** | 2026-01-21 |
+| **Last Updated** | 2026-01-26 |
 
 **Notes**:
 - Uses `DATABASE_URL` from environment
 - Bypasses RLS with service role credentials
 - Schema file: `src/database/schema.ts`
+- **Synced Tables**: `profiles`, `referral_stats`, `live_messages`, `live_streams`, `badges`, `user_badges`, `voice_clips`, `validations`, `reward_rates`, `transactions`, `notification_logs`, `clip_flags`, `withdrawals`, `payout_requests`, `reports`, `notification_outbox`
 
 ---
 
@@ -46,14 +47,17 @@
 | **Module Path** | `src/live/` |
 | **Description** | LiveKit token generation and stream management |
 | **Drizzle Tables** | `liveStreams`, `liveMessages` |
-| **Last Updated** | 2026-01-20 |
+| **Last Updated** | 2026-01-26 |
 
 **Endpoints**:
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/live/token` | Generate LiveKit access token |
-| POST | `/live/start` | Start a new stream |
-| POST | `/live/end` | End an active stream |
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/live/token` | Generate LiveKit access token | ✅ Required |
+| POST | `/live/call-token` | Generate token for video call | ✅ Required |
+| POST | `/live/start` | Start a new stream | ✅ Required |
+| POST | `/live/end` | End an active stream | ✅ Required |
+| GET | `/live/discover` | List active streams | ❌ Public |
+| POST | `/live/count` | Update viewer count | ✅ Required |
 
 **Dependencies**:
 - LiveKit Server SDK
@@ -66,19 +70,24 @@
 ### Monetization Module
 | Field | Value |
 |-------|-------|
-| **Status** | 🟡 In Progress |
+| **Status** | 🟢 Complete |
 | **Module Path** | `src/monetization/` |
 | **Description** | Validation consensus, rewards, and payouts |
 | **Drizzle Tables** | `validations`, `transactions`, `rewardRates`, `voiceClips`, `profiles` |
-| **Last Updated** | 2026-01-21 |
+| **Last Updated** | 2026-01-26 |
 
 **Endpoints**:
 | Method | Endpoint | Description | Status |
 |--------|----------|-------------|--------|
-| POST | `/monetization/validate` | Submit clip validation | 🟡 In Progress |
-| GET | `/monetization/queue` | Get validation queue | 🔴 Not Started |
-| GET | `/monetization/balance` | Get user balance | 🔴 Not Started |
-| POST | `/monetization/payout` | Request payout | 🔴 Not Started |
+| POST | `/monetization/validate` | Submit clip validation | 🟢 Complete |
+| GET | `/monetization/queue` | Get validation queue | 🟢 Complete |
+| GET | `/monetization/history` | Get validation history | 🟢 Complete |
+| GET | `/monetization/earnings` | Get user balance/earnings | 🟢 Complete |
+| POST | `/monetization/flag` | Flag clip for review | 🟢 Complete |
+| POST | `/monetization/remix` | Register remix clip | 🟢 Complete |
+| GET | `/monetization/admin/flags` | Admin: pending flags | 🟢 Complete |
+| POST | `/monetization/admin/flags/:id/resolve` | Admin: resolve flag | 🟢 Complete |
+
 
 **Dependencies**:
 - ConsensusService (internal)
@@ -92,10 +101,10 @@
 ### Notification Module
 | Field | Value |
 |-------|-------|
-| **Status** | 🔴 Not Started |
+| **Status** | 🟡 Schema Ready |
 | **Module Path** | `src/notification/` (planned) |
 | **Description** | Push notification delivery via Expo |
-| **Drizzle Tables** | TBD |
+| **Drizzle Tables** | `notification_logs` |
 | **Dependencies** | `expo-server-sdk` |
 
 ---
@@ -105,7 +114,7 @@
 ### Badges Module
 | Field | Value |
 |-------|-------|
-| **Status** | 🔴 Not Started |
+| **Status** | 🟡 Schema Ready |
 | **Module Path** | `src/badges/` (planned) |
 | **Description** | Badge awarding and tracking |
 | **Drizzle Tables** | `badges`, `userBadges` |
@@ -148,9 +157,10 @@
 ### Moderation Module
 | Field | Value |
 |-------|-------|
-| **Status** | 🔴 Not Started |
+| **Status** | 🟡 Schema Ready |
 | **Module Path** | `src/moderation/` (planned) |
 | **Description** | Content moderation and flagging |
+| **Drizzle Tables** | `reports`, `clip_flags` |
 | **Dependencies** | AI moderation service (TBD) |
 
 ---

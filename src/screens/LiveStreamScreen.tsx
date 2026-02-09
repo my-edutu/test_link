@@ -16,11 +16,11 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import {
     LiveKitRoom,
     VideoTrack,
-    AudioTrack,
     useTracks,
     useRoomContext,
     useParticipantInfo,
-    useLocalParticipant
+    useLocalParticipant,
+    useParticipants
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
 import { MaterialIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
@@ -28,6 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useTheme } from '../context/ThemeContext';
+import { liveService } from '../services/liveService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,10 +43,21 @@ interface ChatMessage {
     created_at: string;
 }
 
-const LiveStreamHUD = ({ roomName, hostProfile }: { roomName: string, hostProfile: any }) => {
+const LiveStreamHUD = ({ roomName, hostProfile, viewerCount }: { roomName: string, hostProfile: any, viewerCount: number }) => {
     const navigation = useNavigation();
     const { colors } = useTheme();
     const tracks = useTracks([Track.Source.Camera]);
+
+    // Format viewer count (1.2k for 1200, etc.)
+    const formatViewerCount = (count: number) => {
+        if (count >= 1000000) {
+            return `${(count / 1000000).toFixed(1)}M`;
+        }
+        if (count >= 1000) {
+            return `${(count / 1000).toFixed(1)}k`;
+        }
+        return count.toString();
+    };
 
     return (
         <View style={StyleSheet.absoluteFill}>
@@ -71,7 +83,7 @@ const LiveStreamHUD = ({ roomName, hostProfile }: { roomName: string, hostProfil
 
                     <View style={styles.viewerBadge}>
                         <Ionicons name="eye-outline" size={14} color="white" />
-                        <Text style={styles.viewerCount}>1.2k</Text>
+                        <Text style={styles.viewerCount}>{formatViewerCount(viewerCount)}</Text>
                     </View>
                 </View>
 
@@ -240,11 +252,26 @@ const ChatOverlay = ({ roomName }: { roomName: string }) => {
     );
 };
 
+// Inner component that has access to LiveKit room context for viewer count
+const LiveStreamContent = ({ roomName, hostProfile }: { roomName: string, hostProfile: any }) => {
+    const participants = useParticipants();
+    // Viewer count = total participants (includes host, so subtract 1 for viewers only)
+    const viewerCount = Math.max(0, participants.length - 1);
+
+    return (
+        <>
+            <LiveStreamHUD roomName={roomName} hostProfile={hostProfile} viewerCount={viewerCount} />
+            <ChatOverlay roomName={roomName} />
+        </>
+    );
+};
+
 export default function LiveStreamScreen() {
     const route = useRoute<any>();
     const { roomName, hostId } = route.params || { roomName: 'test-room', hostId: null };
     const { user } = useAuth();
     const [token, setToken] = useState<string | null>(null);
+    const [serverUrl, setServerUrl] = useState<string | null>(null);
     const [hostProfile, setHostProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -258,16 +285,10 @@ export default function LiveStreamScreen() {
                 }
 
                 // 2. Get LiveKit Token from our NestJS Backend
-                const response = await fetch('http://localhost:3000/live/token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        roomName,
-                        participantName: user?.email?.split('@')[0] || 'Guest'
-                    })
-                });
-                const data = await response.json();
-                setToken(data.token);
+                const participantName = user?.email?.split('@')[0] || 'Guest';
+                const { token, serverUrl } = await liveService.getJoinToken(roomName, participantName);
+                setToken(token);
+                setServerUrl(serverUrl);
             } catch (err) {
                 console.error('Setup error:', err);
             } finally {
@@ -278,7 +299,7 @@ export default function LiveStreamScreen() {
         setup();
     }, [roomName, hostId, user]);
 
-    if (loading || !token) {
+    if (loading || !token || !serverUrl) {
         return (
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ color: 'white' }}>Joining stream...</Text>
@@ -292,21 +313,20 @@ export default function LiveStreamScreen() {
             style={styles.container}
         >
             <LiveKitRoom
-                serverUrl="wss://lingualink-rtmp.livekit.cloud" // Replace with your LIVEKIT_URL
+                serverUrl={serverUrl}
                 token={token}
                 connect={true}
                 audio={true}
                 video={true}
             >
-                <LiveStreamHUD roomName={roomName} hostProfile={hostProfile} />
-                <ChatOverlay roomName={roomName} />
+                <LiveStreamContent roomName={roomName} hostProfile={hostProfile} />
             </LiveKitRoom>
         </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#000' },
+    container: { flex: 1, backgroundColor: '#000' }, // Immersive video context stays dark
     fullVideo: { width: width, height: height, position: 'absolute' },
 
     headerOverlay: {

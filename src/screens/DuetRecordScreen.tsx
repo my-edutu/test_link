@@ -19,8 +19,7 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthProvider';
 import { uploadAudioFile, getPlayableAudioUrl } from '../utils/storage';
-import { supabase } from '../supabaseClient';
-import config from '../config';
+import { authFetch } from '../services/authFetch';
 
 type DuetRecordScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DuetRecord'>;
 type DuetRecordScreenRouteProp = RouteProp<RootStackParamList, 'DuetRecord'>;
@@ -140,27 +139,15 @@ export const DuetRecordScreen: React.FC<Props> = ({ navigation, route }) => {
             const uploadRes = await uploadAudioFile(recordedUri, user.id);
             if (!uploadRes.success || !uploadRes.url) throw new Error('Upload failed');
 
-            // 2. Call backend Remix Endpoint
-            // We need to use `fetch` with auth headers manually, assuming standard fetch is available.
-            // Need session token.
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
-
-            if (!token) throw new Error('Not authenticated');
-
-            const response = await fetch(`${config.API_URL}/monetization/remix`, {
+            // 2. Call backend Remix Endpoint (authenticated via Clerk JWT)
+            const response = await authFetch(`/monetization/remix`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-user-id': user.id, // Legacy/Backup header
-                },
                 body: JSON.stringify({
                     parentClipId,
                     phrase: `Remix of "${parentClipPhrase || 'clip'}"`,
                     language: language,
                     audioUrl: uploadRes.url
-                })
+                }),
             });
 
             if (!response.ok) {

@@ -3,15 +3,15 @@
 
 CREATE TABLE IF NOT EXISTS reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    reporter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    reported_user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    reporter_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    reported_user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     post_id UUID REFERENCES voice_clips(id) ON DELETE SET NULL,
     reason TEXT NOT NULL CHECK (reason IN ('spam', 'harassment', 'inappropriate', 'other')),
     additional_details TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewing', 'resolved', 'dismissed')),
     resolution_action TEXT CHECK (resolution_action IN ('dismiss', 'warn', 'hide_content', 'ban_user')),
     resolution_notes TEXT,
-    resolver_id TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    resolver_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     resolved_at TIMESTAMP WITH TIME ZONE
 );
@@ -29,13 +29,13 @@ ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own reports"
     ON reports
     FOR SELECT
-    USING (auth.uid()::text = reporter_id);
+    USING (auth.uid() = reporter_id);
 
 -- Users can create reports
 CREATE POLICY "Users can create reports"
     ON reports
     FOR INSERT
-    WITH CHECK (auth.uid()::text = reporter_id);
+    WITH CHECK (auth.uid() = reporter_id);
 
 -- Admins can view all reports (requires admin role check)
 -- Note: Implement proper admin check based on your roles system
@@ -45,7 +45,7 @@ CREATE POLICY "Admins can view all reports"
     USING (
         EXISTS (
             SELECT 1 FROM profiles 
-            WHERE id = auth.uid()::text 
+            WHERE id = auth.uid() 
             AND (validator_tier = 'admin' OR trust_score >= 500)
         )
     );
@@ -57,7 +57,7 @@ CREATE POLICY "Admins can update reports"
     USING (
         EXISTS (
             SELECT 1 FROM profiles 
-            WHERE id = auth.uid()::text 
+            WHERE id = auth.uid() 
             AND (validator_tier = 'admin' OR trust_score >= 500)
         )
     );

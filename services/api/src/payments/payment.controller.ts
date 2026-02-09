@@ -10,11 +10,14 @@ import {
     BadRequestException,
     RawBodyRequest,
     Req,
+    UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as crypto from 'crypto';
 import { PaymentService } from './payment.service';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { PaystackIpGuard } from '../common/guards/paystack-ip.guard';
 
 interface PaystackWebhookPayload {
     event: string;
@@ -41,6 +44,7 @@ interface PaystackWebhookPayload {
  * Payment Controller
  * Handles webhook events from Paystack for balance top-ups.
  */
+@ApiTags('Webhooks')
 @Controller('webhooks')
 export class PaymentController {
     private readonly logger = new Logger(PaymentController.name);
@@ -56,8 +60,13 @@ export class PaymentController {
     /**
      * Paystack webhook endpoint.
      * POST /webhooks/paystack
+     *
+     * Security:
+     * 1. PaystackIpGuard - Verifies request comes from Paystack's IP addresses
+     * 2. Signature verification - Validates HMAC SHA512 signature
      */
     @Post('paystack')
+    @UseGuards(PaystackIpGuard)
     @HttpCode(HttpStatus.OK)
     async handlePaystackWebhook(
         @Req() req: RawBodyRequest<Request>,
@@ -110,6 +119,7 @@ export class PaymentController {
 
     /**
      * Handle successful charge (top-up).
+     * Uses the exchange rate from payment metadata for accurate conversion.
      */
     private async handleChargeSuccess(data: PaystackWebhookPayload['data']) {
         const userId = data.metadata?.user_id || data.customer.metadata?.user_id;
@@ -119,9 +129,22 @@ export class PaymentController {
             throw new BadRequestException('Missing user_id in payment metadata');
         }
 
-        // Convert kobo to dollars (assuming 1 USD = 1500 NGN for demo)
-        const amountNaira = data.amount / 100;
-        const amountUsd = amountNaira / 1500; // Simplified conversion
+        // Use the exchange rate from metadata if available (stored during initialization)
+        // This ensures consistency between what user saw and what we credit
+        const exchangeRate = (data.metadata as any)?.exchange_rate || 1500;
+        const usdAmountFromMetadata = (data.metadata as any)?.usd_amount;
+
+        // Prefer the original USD amount if stored, otherwise calculate
+        let amountUsd: number;
+        if (usdAmountFromMetadata && typeof usdAmountFromMetadata === 'number') {
+            amountUsd = usdAmountFromMetadata;
+            this.logger.debug(`Using stored USD amount: $${amountUsd} from metadata`);
+        } else {
+            // Fallback: Convert kobo to USD using exchange rate
+            const amountNaira = data.amount / 100;
+            amountUsd = amountNaira / exchangeRate;
+            this.logger.debug(`Calculated USD amount: $${amountUsd} (rate: ${exchangeRate})`);
+        }
 
         try {
             await this.paymentService.creditTopUp(

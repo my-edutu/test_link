@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getOptionalCurrentUserId } from '../services/authFetch';
 
 export interface VoiceClipWithUser {
   id: string;
@@ -14,6 +15,29 @@ export interface VoiceClipWithUser {
   is_validated: boolean;
   created_at: string;
   user: {
+    id: string;
+    username: string;
+    full_name: string;
+    avatar_url?: string;
+    primary_language?: string;
+  };
+}
+
+export type FeedItemType = 'voice' | 'video' | 'story';
+
+export interface FeedItem {
+  id: string;
+  item_type: FeedItemType;
+  user_id: string;
+  phrase: string;
+  translation: string;
+  media_url: string;
+  thumbnail_url?: string;
+  language: string;
+  dialect?: string;
+  duration?: number;
+  created_at: string;
+  profiles: {
     id: string;
     username: string;
     full_name: string;
@@ -113,30 +137,30 @@ export const getFollowingClips = async (
   offset: number = 0
 ): Promise<VoiceClipWithUser[]> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return [];
 
-      // First get the list of users the current user follows
-  const { data: followingUsers, error: followingError } = await supabase
-    .from('followers')
-    .select('following_id')
-    .eq('follower_id', currentUserId);
+    // First get the list of users the current user follows
+    const { data: followingUsers, error: followingError } = await supabase
+      .from('followers')
+      .select('following_id')
+      .eq('follower_id', currentUserId);
 
-  if (followingError) {
-    console.error('Error getting following users:', followingError);
-    return [];
-  }
+    if (followingError) {
+      console.error('Error getting following users:', followingError);
+      return [];
+    }
 
-  if (!followingUsers || followingUsers.length === 0) {
-    return []; // No following users, return empty array
-  }
+    if (!followingUsers || followingUsers.length === 0) {
+      return []; // No following users, return empty array
+    }
 
-  const followingIds = followingUsers.map(user => user.following_id);
+    const followingIds = followingUsers.map(user => user.following_id);
 
-  // Then get clips from those users
-  const { data, error } = await supabase
-    .from('voice_clips')
-    .select(`
+    // Then get clips from those users
+    const { data, error } = await supabase
+      .from('voice_clips')
+      .select(`
       *,
       profiles!voice_clips_user_id_fkey (
         id,
@@ -146,9 +170,9 @@ export const getFollowingClips = async (
         primary_language
       )
     `)
-    .in('user_id', followingIds)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+      .in('user_id', followingIds)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error getting following clips:', error);
@@ -227,7 +251,7 @@ export const getClipsNeedingValidation = async (
   language?: string
 ): Promise<VoiceClipWithUser[]> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return [];
 
     let query = supabase
@@ -285,7 +309,7 @@ export const submitValidation = async (
   isApproved: boolean = true
 ): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
     // Get clip details for notification
@@ -470,6 +494,97 @@ export const searchVoiceClips = async (
     })) || [];
   } catch (error) {
     console.error('Error searching voice clips:', error);
+    return [];
+  }
+};
+
+/**
+ * Get a combined feed of voice clips, video clips, and stories
+ * @param limit - Maximum number of items per type
+ * @returns Promise<FeedItem[]>
+ */
+export const getGlobalFeed = async (limit: number = 20): Promise<FeedItem[]> => {
+  try {
+    // Fetch voice clips
+    const { data: voiceData, error: voiceError } = await supabase
+      .from('voice_clips')
+      .select(`
+        *,
+        profiles:user_id (
+          id,
+          username,
+          full_name,
+          avatar_url,
+          primary_language
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    // Fetch video clips
+    const { data: videoData, error: videoError } = await supabase
+      .from('video_clips')
+      .select(`
+        *,
+        profiles:user_id (
+          id,
+          username,
+          full_name,
+          avatar_url,
+          primary_language
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    // Fetch stories
+    const { data: storyData, error: storyError } = await supabase
+      .from('stories')
+      .select(`
+        *,
+        profiles:user_id (
+          id,
+          username,
+          full_name,
+          avatar_url,
+          primary_language
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (voiceError) console.error('Error fetching voice clips:', voiceError);
+    if (videoError) console.error('Error fetching video clips:', videoError);
+    if (storyError) console.error('Error fetching stories:', storyError);
+
+    // Normalize and combine
+    const feed: FeedItem[] = [
+      ...(voiceData || []).map(item => ({
+        ...item,
+        item_type: 'voice' as const,
+        media_url: item.audio_url,
+      })),
+      ...(videoData || []).map(item => ({
+        ...item,
+        item_type: 'video' as const,
+        media_url: item.video_url,
+      })),
+      ...(storyData || []).map(item => ({
+        ...item,
+        item_type: 'story' as const,
+        media_url: item.media_url,
+        phrase: item.caption || 'A new story',
+        translation: '',
+        language: item.profiles?.primary_language || 'Unknown',
+      })),
+    ];
+
+    // Sort by created_at descending
+    return feed.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  } catch (error) {
+    console.error('Error generating global feed:', error);
     return [];
   }
 };

@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useNotifications } from '../context/NotificationProvider';
 import { getNavigationFromNotification, NotificationData } from '../services/notifications';
@@ -27,13 +26,16 @@ interface BannerNotification {
     data?: NotificationData;
 }
 
-const InAppNotificationBanner: React.FC = () => {
+interface InAppNotificationBannerProps {
+    navigationRef?: any;
+}
+
+const InAppNotificationBanner: React.FC<InAppNotificationBannerProps> = ({ navigationRef }) => {
     const [bannerNotification, setBannerNotification] = useState<BannerNotification | null>(null);
     const translateY = useRef(new Animated.Value(-BANNER_HEIGHT - 50)).current;
     const opacity = useRef(new Animated.Value(0)).current;
-    const timeoutRef = useRef<NodeJS.Timeout>();
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const insets = useSafeAreaInsets();
-    const navigation = useNavigation<any>();
     const { notification } = useNotifications();
 
     // Listen for foreground notifications
@@ -99,15 +101,17 @@ const InAppNotificationBanner: React.FC = () => {
             clearTimeout(timeoutRef.current);
         }
 
-        if (bannerNotification?.data) {
+        if (bannerNotification?.data && navigationRef?.isReady?.()) {
             const navigationTarget = getNavigationFromNotification(bannerNotification.data);
             if (navigationTarget) {
                 hideBanner();
                 try {
-                    navigation.navigate(navigationTarget.screen, navigationTarget.params);
+                    navigationRef.navigate(navigationTarget.screen, navigationTarget.params);
                 } catch (error) {
                     console.error('Navigation error from banner:', error);
                 }
+            } else {
+                hideBanner();
             }
         } else {
             hideBanner();

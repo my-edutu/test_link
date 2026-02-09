@@ -1,14 +1,14 @@
 /**
  * Authenticated API Client
  * Provides a wrapper for making authenticated API calls to the NestJS backend.
- * Automatically includes the Supabase JWT token in the Authorization header.
+ * Uses Clerk for authentication tokens.
  */
 
 import Constants from 'expo-constants';
-import { supabase } from '../supabaseClient';
 
-// API Configuration
-const API_BASE_URL = Constants.expoConfig?.extra?.API_URL || 'http://localhost:3000';
+import { API_BASE_URL } from '../config';
+
+// const API_BASE_URL = getBaseUrl();
 
 /**
  * Options for authenticated fetch requests
@@ -17,27 +17,24 @@ interface AuthFetchOptions extends RequestInit {
     requireAuth?: boolean; // Default true - set to false for public endpoints
 }
 
+// Clerk token getter - set by AuthProvider when user signs in
+let _getClerkToken: (() => Promise<string | null>) | null = null;
+let _clerkUserId: string | null = null;
+
 /**
- * Get the current user's JWT access token from Supabase
+ * Called by AuthProvider to set the Clerk token getter function
  */
-async function getAccessToken(): Promise<string | null> {
-    try {
-        const { data: { session } } = await supabase.auth.getSession();
-        return session?.access_token || null;
-    } catch (error) {
-        console.error('Failed to get access token:', error);
-        return null;
-    }
+export function setAuthTokenProvider(
+    getToken: () => Promise<string | null>,
+    userId: string | null
+) {
+    _getClerkToken = getToken;
+    _clerkUserId = userId;
 }
 
 /**
  * Make an authenticated fetch request to the API.
- * Automatically includes the JWT token in the Authorization header.
- * 
- * @param endpoint - The API endpoint (e.g., '/monetization/validate')
- * @param options - Fetch options including method, body, etc.
- * @returns The response from the API
- * @throws Error if the request fails or authentication is required but no token is available
+ * Automatically includes the Clerk JWT token in the Authorization header.
  */
 export async function authFetch(
     endpoint: string,
@@ -48,8 +45,15 @@ export async function authFetch(
     // Build the full URL
     const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
 
-    // Get the access token
-    const accessToken = await getAccessToken();
+    // Get token from Clerk
+    let accessToken: string | null = null;
+    if (_getClerkToken) {
+        try {
+            accessToken = await _getClerkToken();
+        } catch (e) {
+            console.warn('Failed to get Clerk token:', e);
+        }
+    }
 
     // Prepare headers
     const requestHeaders: Record<string, string> = {
@@ -60,21 +64,11 @@ export async function authFetch(
     // Add Authorization header if token is available
     if (accessToken) {
         requestHeaders['Authorization'] = `Bearer ${accessToken}`;
+        if (_clerkUserId) {
+            requestHeaders['x-user-id'] = _clerkUserId;
+        }
     } else if (requireAuth) {
         throw new Error('Authentication required. Please log in.');
-    }
-
-    // Also include x-user-id for backward compatibility during migration
-    // This can be removed once the backend fully transitions to JWT
-    if (accessToken) {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user?.id) {
-                requestHeaders['x-user-id'] = user.id;
-            }
-        } catch {
-            // Ignore errors getting user ID for legacy header
-        }
     }
 
     return fetch(url, {
@@ -84,14 +78,21 @@ export async function authFetch(
 }
 
 /**
- * Get the current user ID, or throw if not authenticated
+ * Get the current Clerk user ID, or throw if not authenticated
  */
 export async function getCurrentUserId(): Promise<string> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.id) {
+    if (!_clerkUserId) {
         throw new Error('User not authenticated');
     }
-    return user.id;
+    return _clerkUserId;
+}
+
+/**
+ * Get the current Clerk user ID, or null if not authenticated.
+ * Useful for non-hook utility modules that previously relied on `supabase.auth.getUser()`.
+ */
+export function getOptionalCurrentUserId(): string | null {
+    return _clerkUserId;
 }
 
 /**

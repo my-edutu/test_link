@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { eq, sql, and } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema';
+import { EncryptionService } from '../common/encryption.service';
+import { ExchangeRateService } from '../common/exchange-rate.service';
 
 export const WITHDRAWAL_STATUS = {
     PENDING: 'pending',
@@ -22,56 +24,55 @@ export const TRANSACTION_TYPES = {
     FUND_UNLOCK: 'fund_unlock',
 } as const;
 
-// Default exchange rate (fallback)
-const DEFAULT_USD_TO_NGN_RATE = 1500;
-
 @Injectable()
 export class PaymentService {
     private readonly logger = new Logger(PaymentService.name);
     private readonly minWithdrawal: number = 5.0; // Minimum $5 withdrawal
+    private readonly dailyWithdrawalLimit: number = 10.0; // Per day limit requested by user
 
     constructor(
         @Inject('DRIZZLE') private db: PostgresJsDatabase<typeof schema>,
         private configService: ConfigService,
+        private encryptionService: EncryptionService,
+        private exchangeRateService: ExchangeRateService,
     ) { }
 
     /**
-     * Get the current USD to NGN exchange rate.
-     * Uses environment variable or fallback.
-     * 
-     * TODO: For live rates, integrate with an exchange rate API:
-     * - https://exchangerate.host/
-     * - https://openexchangerates.org/
-     * - https://fixer.io/
-     * 
-     * Example integration:
-     * const apiKey = this.configService.get('CURRENCY_API_KEY');
-     * const response = await fetch(`https://api.exchangerate.host/latest?base=USD&symbols=NGN&access_key=${apiKey}`);
-     * return response.json().rates.NGN;
+     * Check if user has exceeded their daily withdrawal limit.
      */
-    private getUsdToNgnRate(): number {
-        const configuredRate = this.configService.get<number>('USD_TO_NGN_RATE');
-        const rate = configuredRate || DEFAULT_USD_TO_NGN_RATE;
+    private async checkDailyWithdrawalLimit(userId: string, amount: number, tx: any): Promise<void> {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        if (!configuredRate) {
-            this.logger.warn(`Using default USD to NGN rate: ${DEFAULT_USD_TO_NGN_RATE}. Set USD_TO_NGN_RATE in environment.`);
+        // Sum up withdrawal requests created today (excluding failed ones)
+        // We check 'payout_requests' table as it tracks the new flow
+        const result = await tx.execute(sql`
+            SELECT COALESCE(SUM(CAST(amount AS DECIMAL)), 0) as total
+            FROM payout_requests
+            WHERE user_id = ${userId}
+            AND created_at >= ${today}
+            AND status NOT IN ('failed', 'refunded')
+        `);
+
+        // Also check legacy withdrawals table just in case
+        const legacyResult = await tx.execute(sql`
+            SELECT COALESCE(SUM(CAST(amount AS DECIMAL)), 0) as total
+            FROM withdrawals
+            WHERE user_id = ${userId}
+            AND created_at >= ${today}
+            AND status NOT IN ('failed', 'refunded')
+        `);
+
+        const dailyTotal = parseFloat((result[0] as any).total || '0') +
+            parseFloat((legacyResult[0] as any).total || '0');
+
+        if (dailyTotal + amount > this.dailyWithdrawalLimit) {
+            throw new BadRequestException(
+                `Daily withdrawal limit of $${this.dailyWithdrawalLimit} exceeded. ` +
+                `You have already requested $${dailyTotal.toFixed(2)} today. ` +
+                `Remaining: $${Math.max(0, this.dailyWithdrawalLimit - dailyTotal).toFixed(2)}`
+            );
         }
-
-        return rate;
-    }
-
-    /**
-     * Convert USD to kobo (smallest NGN currency unit).
-     * 1 NGN = 100 kobo
-     */
-    private usdToKobo(amountUsd: number): number {
-        const exchangeRate = this.getUsdToNgnRate();
-        const amountNgn = amountUsd * exchangeRate;
-        const amountKobo = Math.round(amountNgn * 100);
-
-        this.logger.debug(`Currency conversion: $${amountUsd} USD = ${amountKobo} kobo (rate: ${exchangeRate})`);
-
-        return amountKobo;
     }
 
     /**
@@ -83,8 +84,11 @@ export class PaymentService {
             throw new Error('PAYSTACK_SECRET_KEY is not configured');
         }
 
-        // Convert USD to kobo using configurable exchange rate
-        const amountKobo = this.usdToKobo(amount);
+        // Get live exchange rate
+        const rate = await this.exchangeRateService.getUsdToNgnRate();
+
+        // Convert to kobo
+        const amountKobo = await this.exchangeRateService.usdToKobo(amount);
 
         try {
             const response = await fetch('https://api.paystack.co/transaction/initialize', {
@@ -99,7 +103,7 @@ export class PaymentService {
                     metadata: {
                         user_id: userId,
                         usd_amount: amount, // Store original USD amount
-                        exchange_rate: this.getUsdToNgnRate(), // Store rate used
+                        exchange_rate: rate, // Store rate used
                         custom_fields: [
                             {
                                 display_name: "User ID",
@@ -108,7 +112,7 @@ export class PaymentService {
                             }
                         ]
                     },
-                    callback_url: 'https://lingualink-app.com/payment/callback', // Deep link or web callback
+                    callback_url: this.configService.get<string>('PAYMENT_CALLBACK_URL') || 'https://lingualink-app.com/payment/callback',
                     channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer']
                 }),
             });
@@ -128,7 +132,7 @@ export class PaymentService {
 
     /**
      * Credit a user's balance after a successful top-up.
-     * Includes idempotency check to prevent double-crediting.
+     * Uses database transaction for atomicity and includes idempotency check.
      */
     async creditTopUp(
         userId: string,
@@ -136,41 +140,48 @@ export class PaymentService {
         reference: string,
         currency: string,
     ): Promise<void> {
-        // 1. Idempotency check - has this reference already been processed?
-        const existingTx = await this.db
-            .select()
-            .from(schema.transactions)
-            .where(eq(schema.transactions.referenceId, reference))
-            .limit(1);
+        try {
+            await this.db.transaction(async (tx) => {
+                // 1. Idempotency check - has this reference already been processed?
+                const existingTx = await tx
+                    .select()
+                    .from(schema.transactions)
+                    .where(eq(schema.transactions.referenceId, reference))
+                    .limit(1);
 
-        if (existingTx.length > 0) {
-            this.logger.warn(`Duplicate top-up attempt: ${reference}`);
-            return; // Already processed, skip
+                if (existingTx.length > 0) {
+                    this.logger.warn(`Duplicate top-up attempt blocked: ${reference}`);
+                    return; // Already processed, skip
+                }
+
+                // 2. Update balance atomically within transaction
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET balance = COALESCE(balance, 0) + ${amount},
+                        updated_at = now()
+                    WHERE id = ${userId}
+                `);
+
+                // 3. Log transaction - guaranteed to commit with balance update
+                await tx.insert(schema.transactions).values({
+                    userId,
+                    amount: amount.toString(),
+                    type: TRANSACTION_TYPES.TOP_UP,
+                    description: `Top-up via ${currency}`,
+                    referenceId: reference,
+                });
+
+                this.logger.log(`[TX] Credited ${amount} to ${userId} (ref: ${reference})`);
+            });
+        } catch (error) {
+            this.logger.error(`[TX FAILED] creditTopUp for ${userId}, ref: ${reference}: ${error}`);
+            throw error;
         }
-
-        // 2. Update balance atomically
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET balance = COALESCE(balance, 0) + ${amount},
-                updated_at = now()
-            WHERE id = ${userId}
-        `);
-
-        // 3. Log transaction
-        await this.db.insert(schema.transactions).values({
-            userId,
-            amount: amount.toString(),
-            type: TRANSACTION_TYPES.TOP_UP,
-            description: `Top-up via ${currency}`,
-            referenceId: reference,
-        });
-
-        this.logger.log(`Credited ${amount} to ${userId} (ref: ${reference})`);
     }
 
     /**
-     * Initiate a withdrawal request.
-     * Validates balance and creates a pending withdrawal.
+     * Initiate a withdrawal request (Legacy).
+     * Now includes daily limits and encryption.
      */
     async requestWithdrawal(
         userId: string,
@@ -184,141 +195,88 @@ export class PaymentService {
             throw new BadRequestException(`Minimum withdrawal is $${this.minWithdrawal}`);
         }
 
-        // 2. Check balance
-        const profile = await this.db
-            .select({ balance: schema.profiles.balance })
-            .from(schema.profiles)
-            .where(eq(schema.profiles.id, userId))
-            .limit(1);
+        try {
+            return await this.db.transaction(async (tx) => {
+                // 2. Check Daily Limit (New)
+                await this.checkDailyWithdrawalLimit(userId, amount, tx);
 
-        if (profile.length === 0) {
-            throw new BadRequestException('User profile not found');
+                // 3. Lock user row and check balance
+                const lockResult = await tx.execute(sql`
+                    SELECT id, balance
+                    FROM profiles
+                    WHERE id = ${userId}
+                    FOR UPDATE
+                `);
+
+                const profile = lockResult[0] as { id: string; balance: string } | undefined;
+
+                if (!profile) {
+                    throw new BadRequestException('User profile not found');
+                }
+
+                const currentBalance = parseFloat(profile.balance || '0');
+                if (currentBalance < amount) {
+                    throw new BadRequestException(`Insufficient balance. Available: $${currentBalance.toFixed(2)}`);
+                }
+
+                // 4. Generate unique reference
+                const reference = `WD-${userId.substring(0, 8)}-${Date.now()}`;
+
+                // 5. Encrypt account number (New)
+                const encryptedAccountNumber = this.encryptionService.encrypt(accountNumber);
+                const maskedAccountNumber = this.encryptionService.maskAccountNumber(accountNumber);
+
+                // 6. Deduct balance atomically
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET balance = balance - ${amount},
+                        updated_at = now()
+                    WHERE id = ${userId}
+                `);
+
+                // 7. Create withdrawal record with encrypted data
+                const [withdrawal] = await tx
+                    .insert(schema.withdrawals)
+                    .values({
+                        userId,
+                        amount: amount.toString(),
+                        bankCode,
+                        accountNumber: maskedAccountNumber, // Store masked only
+                        encryptedAccountNumber: encryptedAccountNumber, // Store encrypted full
+                        accountName,
+                        status: WITHDRAWAL_STATUS.PENDING,
+                        reference,
+                    })
+                    .returning({ id: schema.withdrawals.id });
+
+                // 8. Log transaction
+                await tx.insert(schema.transactions).values({
+                    userId,
+                    amount: (-amount).toString(),
+                    type: TRANSACTION_TYPES.WITHDRAWAL,
+                    description: `Withdrawal request to ${bankCode} - ${maskedAccountNumber}`,
+                    referenceId: withdrawal.id,
+                });
+
+                this.logger.log(`[TX] Withdrawal initiated: ${reference} - $${amount}`);
+
+                return {
+                    withdrawalId: withdrawal.id,
+                    reference,
+                };
+            });
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.logger.error(`[TX FAILED] requestWithdrawal for ${userId}: ${error}`);
+            throw error;
         }
-
-        const currentBalance = parseFloat(profile[0].balance || '0');
-        if (currentBalance < amount) {
-            throw new BadRequestException('Insufficient balance');
-        }
-
-        // 3. Generate unique reference
-        const reference = `WD-${userId.substring(0, 8)}-${Date.now()}`;
-
-        // 4. Deduct balance immediately (hold funds)
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET balance = balance - ${amount},
-                updated_at = now()
-            WHERE id = ${userId}
-        `);
-
-        // 5. Create pending withdrawal record
-        const [withdrawal] = await this.db
-            .insert(schema.withdrawals)
-            .values({
-                userId,
-                amount: amount.toString(),
-                bankCode,
-                accountNumber,
-                accountName,
-                status: WITHDRAWAL_STATUS.PENDING,
-                reference,
-            })
-            .returning({ id: schema.withdrawals.id });
-
-        // 6. Log transaction
-        await this.db.insert(schema.transactions).values({
-            userId,
-            amount: (-amount).toString(),
-            type: TRANSACTION_TYPES.WITHDRAWAL,
-            description: `Withdrawal request to ${bankCode} - ${accountNumber}`,
-            referenceId: withdrawal.id,
-        });
-
-        this.logger.log(`Withdrawal initiated: ${reference} - $${amount}`);
-
-        return {
-            withdrawalId: withdrawal.id,
-            reference,
-        };
-    }
-
-    /**
-     * Mark a withdrawal as complete (called from webhook).
-     */
-    async markWithdrawalComplete(reference: string): Promise<void> {
-        await this.db
-            .update(schema.withdrawals)
-            .set({
-                status: WITHDRAWAL_STATUS.COMPLETED,
-                completedAt: new Date(),
-            })
-            .where(eq(schema.withdrawals.reference, reference));
-
-        this.logger.log(`Withdrawal completed: ${reference}`);
-    }
-
-    /**
-     * Mark a withdrawal as failed (called from webhook).
-     * Refunds the user's balance.
-     */
-    async markWithdrawalFailed(reference: string, reason: string): Promise<void> {
-        // 1. Get withdrawal details
-        const [withdrawal] = await this.db
-            .select()
-            .from(schema.withdrawals)
-            .where(eq(schema.withdrawals.reference, reference))
-            .limit(1);
-
-        if (!withdrawal) {
-            this.logger.warn(`Withdrawal not found: ${reference}`);
-            return;
-        }
-
-        // 2. Update status
-        await this.db
-            .update(schema.withdrawals)
-            .set({
-                status: WITHDRAWAL_STATUS.FAILED,
-                failureReason: reason,
-            })
-            .where(eq(schema.withdrawals.reference, reference));
-
-        // 3. Refund balance
-        const amount = parseFloat(withdrawal.amount);
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET balance = balance + ${amount},
-                updated_at = now()
-            WHERE id = ${withdrawal.userId}
-        `);
-
-        // 4. Log refund
-        await this.db.insert(schema.transactions).values({
-            userId: withdrawal.userId,
-            amount: amount.toString(),
-            type: TRANSACTION_TYPES.REFUND,
-            description: `Withdrawal refund - ${reason}`,
-            referenceId: withdrawal.id,
-        });
-
-        this.logger.log(`Withdrawal failed and refunded: ${reference} - $${amount}`);
-    }
-
-    /**
-     * Get user's withdrawal history.
-     */
-    async getWithdrawals(userId: string, limit: number = 20) {
-        return this.db
-            .select()
-            .from(schema.withdrawals)
-            .where(eq(schema.withdrawals.userId, userId))
-            .orderBy(sql`created_at DESC`)
-            .limit(limit);
     }
 
     /**
      * Request a withdrawal with idempotency key and fund locking.
-     * Uses SELECT FOR UPDATE to prevent race conditions.
+     * Now includes daily limits and encryption.
      */
     async requestWithdrawalWithLocking(
         userId: string,
@@ -328,190 +286,308 @@ export class PaymentService {
         accountName: string,
         idempotencyKey: string,
     ): Promise<{ payoutRequestId: string; reference: string; status: string }> {
-        // 1. Check for existing request with same idempotency key
-        const existingRequest = await this.db
-            .select()
-            .from(schema.payoutRequests)
-            .where(eq(schema.payoutRequests.idempotencyKey, idempotencyKey))
-            .limit(1);
+        try {
+            return await this.db.transaction(async (tx) => {
+                // 1. Check for existing request (Idempotency)
+                const existingRequest = await tx
+                    .select()
+                    .from(schema.payoutRequests)
+                    .where(eq(schema.payoutRequests.idempotencyKey, idempotencyKey))
+                    .limit(1);
 
-        if (existingRequest.length > 0) {
-            // Return existing request (idempotent)
-            this.logger.log(`Returning existing payout request: ${idempotencyKey}`);
-            return {
-                payoutRequestId: existingRequest[0].id,
-                reference: existingRequest[0].paystackReference || idempotencyKey,
-                status: existingRequest[0].status || 'pending',
-            };
+                if (existingRequest.length > 0) {
+                    this.logger.log(`Returning existing payout request: ${idempotencyKey}`);
+                    return {
+                        payoutRequestId: existingRequest[0].id,
+                        reference: existingRequest[0].paystackReference || idempotencyKey,
+                        status: existingRequest[0].status || 'pending',
+                    };
+                }
+
+                // 2. Validate minimum amount
+                if (amount < this.minWithdrawal) {
+                    throw new BadRequestException(`Minimum withdrawal is $${this.minWithdrawal}`);
+                }
+
+                // 3. Check Daily Limit (New)
+                await this.checkDailyWithdrawalLimit(userId, amount, tx);
+
+                // 4. Lock row and check balance
+                const lockResult = await tx.execute(sql`
+                    SELECT id, balance, pending_balance
+                    FROM profiles
+                    WHERE id = ${userId}
+                    FOR UPDATE
+                `);
+
+                const profile = lockResult[0] as { id: string; balance: string; pending_balance: string } | undefined;
+
+                if (!profile) {
+                    throw new BadRequestException('User profile not found');
+                }
+
+                const currentBalance = parseFloat(profile.balance || '0');
+                const availableBalance = currentBalance;
+
+                if (availableBalance < amount) {
+                    throw new BadRequestException(`Insufficient balance. Available: $${availableBalance.toFixed(2)}`);
+                }
+
+                // 5. Generate reference
+                const reference = `WD-${userId.substring(0, 8)}-${Date.now()}`;
+
+                // 6. Encrypt account number (New)
+                const encryptedAccountNumber = this.encryptionService.encrypt(accountNumber);
+                const maskedAccountNumber = this.encryptionService.maskAccountNumber(accountNumber);
+
+                // 7. Lock funds
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET balance = balance - ${amount},
+                        pending_balance = COALESCE(pending_balance, 0) + ${amount},
+                        updated_at = now()
+                    WHERE id = ${userId}
+                `);
+
+                // 8. Create payout request with encrypted data
+                const [payoutRequest] = await tx
+                    .insert(schema.payoutRequests)
+                    .values({
+                        userId,
+                        idempotencyKey,
+                        amount: amount.toString(),
+                        bankCode,
+                        accountNumber: maskedAccountNumber,
+                        encryptedAccountNumber: encryptedAccountNumber,
+                        accountName,
+                        status: WITHDRAWAL_STATUS.PENDING,
+                        paystackReference: reference,
+                        lockedAmount: amount.toString(),
+                    })
+                    .returning({ id: schema.payoutRequests.id });
+
+                // 9. Log fund lock transaction
+                await tx.insert(schema.transactions).values({
+                    userId,
+                    amount: (-amount).toString(),
+                    type: TRANSACTION_TYPES.FUND_LOCK,
+                    description: `Funds locked for withdrawal request`,
+                    referenceId: payoutRequest.id,
+                });
+
+                this.logger.log(`[TX] Withdrawal initiated with fund lock: ${reference} - $${amount}`);
+
+                return {
+                    payoutRequestId: payoutRequest.id,
+                    reference,
+                    status: WITHDRAWAL_STATUS.PENDING,
+                };
+            });
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.logger.error(`[TX FAILED] requestWithdrawalWithLocking for ${userId}: ${error}`);
+            throw error;
         }
+    }
 
-        // 2. Validate minimum amount
-        if (amount < this.minWithdrawal) {
-            throw new BadRequestException(`Minimum withdrawal is $${this.minWithdrawal}`);
+    /**
+     * Mark a withdrawal as complete (called from webhook).
+     */
+    async markWithdrawalComplete(reference: string): Promise<void> {
+        try {
+            await this.db.transaction(async (tx) => {
+                const result = await tx
+                    .update(schema.withdrawals)
+                    .set({
+                        status: WITHDRAWAL_STATUS.COMPLETED,
+                        completedAt: new Date(),
+                    })
+                    .where(eq(schema.withdrawals.reference, reference))
+                    .returning({ id: schema.withdrawals.id });
+
+                if (result.length === 0) {
+                    this.logger.warn(`Withdrawal not found for completion: ${reference}`);
+                    return;
+                }
+
+                this.logger.log(`[TX] Withdrawal completed: ${reference}`);
+            });
+        } catch (error) {
+            this.logger.error(`[TX FAILED] markWithdrawalComplete for ${reference}: ${error}`);
+            throw error;
         }
+    }
 
-        // 3. Use SELECT FOR UPDATE to lock the row and prevent race conditions
-        // This ensures no concurrent withdrawals can overdraw the balance
-        const lockResult = await this.db.execute(sql`
-            SELECT id, balance, pending_balance
-            FROM profiles
-            WHERE id = ${userId}
-            FOR UPDATE
-        `);
+    /**
+     * Mark a withdrawal as failed (called from webhook).
+     * Refunds the user's balance within a database transaction.
+     */
+    async markWithdrawalFailed(reference: string, reason: string): Promise<void> {
+        try {
+            await this.db.transaction(async (tx) => {
+                const withdrawals = await tx
+                    .select()
+                    .from(schema.withdrawals)
+                    .where(eq(schema.withdrawals.reference, reference))
+                    .limit(1);
 
-        const profile = lockResult[0] as { id: string; balance: string; pending_balance: string } | undefined;
+                const withdrawal = withdrawals[0];
 
-        if (!profile) {
-            throw new BadRequestException('User profile not found');
+                if (!withdrawal) {
+                    this.logger.warn(`Withdrawal not found for failure: ${reference}`);
+                    return;
+                }
+
+                if (withdrawal.status === WITHDRAWAL_STATUS.FAILED ||
+                    withdrawal.status === WITHDRAWAL_STATUS.REFUNDED) {
+                    this.logger.warn(`Withdrawal ${reference} already marked as ${withdrawal.status}`);
+                    return;
+                }
+
+                await tx
+                    .update(schema.withdrawals)
+                    .set({
+                        status: WITHDRAWAL_STATUS.FAILED,
+                        failureReason: reason,
+                    })
+                    .where(eq(schema.withdrawals.reference, reference));
+
+                const amount = parseFloat(withdrawal.amount);
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET balance = balance + ${amount},
+                        updated_at = now()
+                    WHERE id = ${withdrawal.userId}
+                `);
+
+                await tx.insert(schema.transactions).values({
+                    userId: withdrawal.userId,
+                    amount: amount.toString(),
+                    type: TRANSACTION_TYPES.REFUND,
+                    description: `Withdrawal refund - ${reason}`,
+                    referenceId: withdrawal.id,
+                });
+
+                this.logger.log(`[TX] Withdrawal failed and refunded: ${reference} - $${amount}`);
+            });
+        } catch (error) {
+            this.logger.error(`[TX FAILED] markWithdrawalFailed for ${reference}: ${error}`);
+            throw error;
         }
-
-        const currentBalance = parseFloat(profile.balance || '0');
-        const pendingBalance = parseFloat(profile.pending_balance || '0');
-        const availableBalance = currentBalance; // Available = balance (pending is already locked)
-
-        if (availableBalance < amount) {
-            throw new BadRequestException(`Insufficient balance. Available: $${availableBalance.toFixed(2)}`);
-        }
-
-        // 4. Generate unique reference
-        const reference = `WD-${userId.substring(0, 8)}-${Date.now()}`;
-
-        // 5. Lock funds: move from balance to pending_balance
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET balance = balance - ${amount},
-                pending_balance = COALESCE(pending_balance, 0) + ${amount},
-                updated_at = now()
-            WHERE id = ${userId}
-        `);
-
-        // 6. Create payout request record
-        const [payoutRequest] = await this.db
-            .insert(schema.payoutRequests)
-            .values({
-                userId,
-                idempotencyKey,
-                amount: amount.toString(),
-                bankCode,
-                accountNumber,
-                accountName,
-                status: WITHDRAWAL_STATUS.PENDING,
-                paystackReference: reference,
-                lockedAmount: amount.toString(),
-            })
-            .returning({ id: schema.payoutRequests.id });
-
-        // 7. Log the fund lock transaction
-        await this.db.insert(schema.transactions).values({
-            userId,
-            amount: (-amount).toString(),
-            type: TRANSACTION_TYPES.FUND_LOCK,
-            description: `Funds locked for withdrawal request`,
-            referenceId: payoutRequest.id,
-        });
-
-        this.logger.log(`Withdrawal initiated with fund lock: ${reference} - $${amount}`);
-
-        return {
-            payoutRequestId: payoutRequest.id,
-            reference,
-            status: WITHDRAWAL_STATUS.PENDING,
-        };
     }
 
     /**
      * Complete a payout request (called from webhook on transfer.success).
-     * Clears the pending balance.
      */
     async completePayoutRequest(reference: string): Promise<void> {
-        // Find the payout request
-        const [payoutRequest] = await this.db
-            .select()
-            .from(schema.payoutRequests)
-            .where(eq(schema.payoutRequests.paystackReference, reference))
-            .limit(1);
+        try {
+            await this.db.transaction(async (tx) => {
+                const payoutRequests = await tx
+                    .select()
+                    .from(schema.payoutRequests)
+                    .where(eq(schema.payoutRequests.paystackReference, reference))
+                    .limit(1);
 
-        if (!payoutRequest) {
-            // Try legacy withdrawals table
-            await this.markWithdrawalComplete(reference);
-            return;
+                const payoutRequest = payoutRequests[0];
+
+                if (!payoutRequest) {
+                    this.logger.log(`Payout request not found, trying legacy withdrawals: ${reference}`);
+                    await this.markWithdrawalComplete(reference);
+                    return;
+                }
+
+                if (payoutRequest.status === WITHDRAWAL_STATUS.COMPLETED) {
+                    this.logger.warn(`Payout request ${reference} already completed`);
+                    return;
+                }
+
+                const lockedAmount = parseFloat(payoutRequest.lockedAmount || '0');
+
+                await tx
+                    .update(schema.payoutRequests)
+                    .set({
+                        status: WITHDRAWAL_STATUS.COMPLETED,
+                        completedAt: new Date(),
+                    })
+                    .where(eq(schema.payoutRequests.id, payoutRequest.id));
+
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET pending_balance = GREATEST(0, COALESCE(pending_balance, 0) - ${lockedAmount}),
+                        updated_at = now()
+                    WHERE id = ${payoutRequest.userId}
+                `);
+
+                this.logger.log(`[TX] Payout completed: ${reference} - $${lockedAmount}`);
+            });
+        } catch (error) {
+            this.logger.error(`[TX FAILED] completePayoutRequest for ${reference}: ${error}`);
+            throw error;
         }
-
-        const lockedAmount = parseFloat(payoutRequest.lockedAmount || '0');
-
-        // Update payout request status
-        await this.db
-            .update(schema.payoutRequests)
-            .set({
-                status: WITHDRAWAL_STATUS.COMPLETED,
-                completedAt: new Date(),
-            })
-            .where(eq(schema.payoutRequests.id, payoutRequest.id));
-
-        // Clear the pending balance (funds have been transferred)
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET pending_balance = GREATEST(0, COALESCE(pending_balance, 0) - ${lockedAmount}),
-                updated_at = now()
-            WHERE id = ${payoutRequest.userId}
-        `);
-
-        this.logger.log(`Payout completed: ${reference} - $${lockedAmount}`);
     }
 
     /**
      * Fail a payout request (called from webhook on transfer.failed).
-     * Refunds the locked funds back to available balance.
      */
     async failPayoutRequest(reference: string, reason: string): Promise<void> {
-        // Find the payout request
-        const [payoutRequest] = await this.db
-            .select()
-            .from(schema.payoutRequests)
-            .where(eq(schema.payoutRequests.paystackReference, reference))
-            .limit(1);
+        try {
+            await this.db.transaction(async (tx) => {
+                const payoutRequests = await tx
+                    .select()
+                    .from(schema.payoutRequests)
+                    .where(eq(schema.payoutRequests.paystackReference, reference))
+                    .limit(1);
 
-        if (!payoutRequest) {
-            // Try legacy withdrawals table
-            await this.markWithdrawalFailed(reference, reason);
-            return;
+                const payoutRequest = payoutRequests[0];
+
+                if (!payoutRequest) {
+                    this.logger.log(`Payout request not found, trying legacy withdrawals: ${reference}`);
+                    await this.markWithdrawalFailed(reference, reason);
+                    return;
+                }
+
+                if (payoutRequest.status === WITHDRAWAL_STATUS.FAILED ||
+                    payoutRequest.status === WITHDRAWAL_STATUS.REFUNDED) {
+                    this.logger.warn(`Payout request ${reference} already marked as ${payoutRequest.status}`);
+                    return;
+                }
+
+                const lockedAmount = parseFloat(payoutRequest.lockedAmount || '0');
+
+                await tx
+                    .update(schema.payoutRequests)
+                    .set({
+                        status: WITHDRAWAL_STATUS.FAILED,
+                        failureReason: reason,
+                    })
+                    .where(eq(schema.payoutRequests.id, payoutRequest.id));
+
+                await tx.execute(sql`
+                    UPDATE profiles
+                    SET balance = balance + ${lockedAmount},
+                        pending_balance = GREATEST(0, COALESCE(pending_balance, 0) - ${lockedAmount}),
+                        updated_at = now()
+                    WHERE id = ${payoutRequest.userId}
+                `);
+
+                await tx.insert(schema.transactions).values({
+                    userId: payoutRequest.userId,
+                    amount: lockedAmount.toString(),
+                    type: TRANSACTION_TYPES.REFUND,
+                    description: `Withdrawal refund - ${reason}`,
+                    referenceId: payoutRequest.id,
+                });
+
+                this.logger.log(`[TX] Payout failed and refunded: ${reference} - $${lockedAmount} - ${reason}`);
+            });
+        } catch (error) {
+            this.logger.error(`[TX FAILED] failPayoutRequest for ${reference}: ${error}`);
+            throw error;
         }
-
-        const lockedAmount = parseFloat(payoutRequest.lockedAmount || '0');
-
-        // Update payout request status
-        await this.db
-            .update(schema.payoutRequests)
-            .set({
-                status: WITHDRAWAL_STATUS.FAILED,
-                failureReason: reason,
-            })
-            .where(eq(schema.payoutRequests.id, payoutRequest.id));
-
-        // Refund: move from pending_balance back to balance
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET balance = balance + ${lockedAmount},
-                pending_balance = GREATEST(0, COALESCE(pending_balance, 0) - ${lockedAmount}),
-                updated_at = now()
-            WHERE id = ${payoutRequest.userId}
-        `);
-
-        // Log the refund
-        await this.db.insert(schema.transactions).values({
-            userId: payoutRequest.userId,
-            amount: lockedAmount.toString(),
-            type: TRANSACTION_TYPES.REFUND,
-            description: `Withdrawal refund - ${reason}`,
-            referenceId: payoutRequest.id,
-        });
-
-        this.logger.log(`Payout failed and refunded: ${reference} - $${lockedAmount} - ${reason}`);
     }
 
-    /**
-     * Get user's balance summary including locked funds.
-     */
     async getBalanceSummary(userId: string): Promise<{
         availableBalance: number;
         pendingBalance: number;
@@ -540,14 +616,20 @@ export class PaymentService {
         };
     }
 
-    /**
-     * Get user's payout request history.
-     */
     async getPayoutRequests(userId: string, limit: number = 20) {
         return this.db
             .select()
             .from(schema.payoutRequests)
             .where(eq(schema.payoutRequests.userId, userId))
+            .orderBy(sql`created_at DESC`)
+            .limit(limit);
+    }
+
+    async getWithdrawals(userId: string, limit: number = 20) {
+        return this.db
+            .select()
+            .from(schema.withdrawals)
+            .where(eq(schema.withdrawals.userId, userId))
             .orderBy(sql`created_at DESC`)
             .limit(limit);
     }

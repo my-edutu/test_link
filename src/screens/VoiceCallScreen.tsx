@@ -10,12 +10,14 @@ import {
   Dimensions,
   Alert,
   Animated,
-  FlatList,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../App';
 import {
   LiveKitRoom,
   useTracks,
@@ -24,40 +26,15 @@ import {
   useRoomContext,
   AudioSession,
 } from '@livekit/react-native';
-import { Track, RoomEvent, ConnectionState } from 'livekit-client';
-import { requestCallToken, generateCallId } from '../services/calling';
+import { Track, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
+import { requestCallToken, generateCallId, logCallStart, logCallAnswered, logCallEnd, CallError } from '../services/calling';
+import { callSignaling } from '../services/callSignaling';
 import { useAuth } from '../context/AuthProvider';
+import * as Network from 'expo-network';
 
 const { width, height } = Dimensions.get('window');
 
-interface ChatContact {
-  id: string;
-  name: string;
-  username: string;
-  avatar: string;
-  language: string;
-  isOnline: boolean;
-}
-
-type RootStackParamList = {
-  VoiceCall: { contact: ChatContact };
-};
-
-type VoiceCallRouteProp = RouteProp<RootStackParamList, 'VoiceCall'>;
-type VoiceCallNavigationProp = NativeStackNavigationProp<RootStackParamList, 'VoiceCall'>;
-
-interface Props {
-  route: VoiceCallRouteProp;
-  navigation: VoiceCallNavigationProp;
-}
-
-interface TranslationBubble {
-  id: string;
-  originalText: string;
-  translatedText: string;
-  speaker: 'me' | 'them';
-  timestamp: string;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'VoiceCall'>;
 
 const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
@@ -67,6 +44,9 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const [token, setToken] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [callId, setCallId] = useState<string | null>(null);
+  const [isWaitingForAnswer, setIsWaitingForAnswer] = useState(true);
+  const [callAccepted, setCallAccepted] = useState(false);
 
   // Configure audio session for voice calls
   useEffect(() => {
@@ -74,6 +54,10 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
       await AudioSession.configureAudio({
         android: {
           preferredOutputList: ['speaker'],
+          audioTypeOptions: {
+            audioAttributesUsageType: 'voiceCommunication',
+            audioAttributesContentType: 'speech',
+          },
         },
         ios: {
           defaultOutput: 'speaker',
@@ -89,30 +73,127 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
     };
   }, []);
 
-  // Fetch LiveKit token on mount
+  // Check if this is an incoming call (navigated from IncomingCallScreen)
+  const isIncomingCall = useRef(callSignaling.hasActiveCall()).current;
+
+  // Initiate call signaling if this is an outgoing call
   useEffect(() => {
+    if (!user?.id || isIncomingCall) {
+      // For incoming calls, we're already connected via signaling
+      setIsWaitingForAnswer(false);
+      setCallAccepted(true);
+      return;
+    }
+
+    const userName = user.fullName || user.username || 'User';
+    const userAvatar = user.imageUrl;
+
+    // Generate call ID and initiate signaling
+    const sorted = [user.id, contact.id].sort();
+    const newCallId = `${sorted[0]}_${sorted[1]}_${Date.now()}`;
+    setCallId(newCallId);
+
+    callSignaling.initiateCall(
+      newCallId,
+      contact.id,
+      userName,
+      userAvatar,
+      'voice'
+    );
+
+    // Listen for call acceptance/decline
+    const checkCallStatus = setInterval(() => {
+      const activeCall = callSignaling.getActiveCall();
+      if (activeCall) {
+        if (activeCall.status === 'accepted') {
+          setCallAccepted(true);
+          setIsWaitingForAnswer(false);
+          clearInterval(checkCallStatus);
+        } else if (activeCall.status === 'declined' || activeCall.status === 'missed') {
+          clearInterval(checkCallStatus);
+          Alert.alert(
+            activeCall.status === 'declined' ? 'Call Declined' : 'No Answer',
+            `${contact.name} ${activeCall.status === 'declined' ? 'declined' : 'did not answer'} your call.`,
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }
+    }, 500);
+
+    return () => {
+      clearInterval(checkCallStatus);
+    };
+  }, [user, contact.id, isIncomingCall, navigation]);
+
+  // Fetch LiveKit token when call is accepted - with improved error handling
+  useEffect(() => {
+    if (!callAccepted) return;
+
     const fetchToken = async () => {
       try {
+        // Network check
+        const netState = await Network.getNetworkStateAsync();
+        if (!netState.isConnected || !netState.isInternetReachable) {
+          setError('No internet connection');
+          Alert.alert(
+            'No Connection',
+            'Please check your internet connection and try again.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+          return;
+        }
+
         const userId = user?.id || 'anonymous';
-        const callId = generateCallId(userId, contact.id);
-        const response = await requestCallToken(callId, userId, true);
+        const generatedCallId = callId || generateCallId(userId, contact.id);
+        if (!callId) setCallId(generatedCallId);
+
+        console.log('[VoiceCall] Fetching token for call:', generatedCallId);
+
+        const response = await requestCallToken(generatedCallId, userId, !isIncomingCall);
         setToken(response.token);
         setServerUrl(response.serverUrl);
-      } catch (err) {
-        console.error('Failed to get call token:', err);
-        setError('Could not connect to call server');
-        Alert.alert('Error', 'Could not connect to call server', [
+
+        // Log call start to history (only for initiator)
+        if (!isIncomingCall) {
+          logCallStart(generatedCallId, contact.id, 'voice');
+        }
+      } catch (err: any) {
+        console.error('[VoiceCall] Failed to get call token:', err);
+
+        // Handle specific error types
+        let errorMessage = 'Could not connect to call server';
+        let errorTitle = 'Connection Error';
+
+        if (err instanceof CallError) {
+          errorMessage = err.message;
+          if (err.code === 'AUTH_ERROR') {
+            errorTitle = 'Session Expired';
+          } else if (err.code === 'NO_NETWORK') {
+            errorTitle = 'No Connection';
+          } else if (err.code === 'TIMEOUT') {
+            errorTitle = 'Connection Timeout';
+          }
+        }
+
+        setError(errorMessage);
+        Alert.alert(errorTitle, errorMessage, [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
       }
     };
 
     fetchToken();
-  }, [user, contact.id, navigation]);
+  }, [callAccepted, user, contact.id, callId, isIncomingCall, navigation]);
+
+  const handleCancelCall = useCallback(async () => {
+    await callSignaling.cancelCall();
+    navigation.goBack();
+  }, [navigation]);
 
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
+        <LinearGradient colors={['#1a1a2e', '#16213e', '#0f0f0f']} style={StyleSheet.absoluteFill} />
         <View style={styles.loadingContainer}>
           <Ionicons name="alert-circle" size={48} color="#EF4444" />
           <Text style={[styles.loadingText, { color: '#EF4444', marginTop: 16 }]}>{error}</Text>
@@ -121,11 +202,23 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   }
 
+  // Show waiting/calling screen while waiting for answer
+  if (isWaitingForAnswer) {
+    return (
+      <CallingScreen
+        contact={contact}
+        insets={insets}
+        onCancel={handleCancelCall}
+      />
+    );
+  }
+
   if (!token || !serverUrl) {
     return (
       <SafeAreaView style={styles.container}>
+        <LinearGradient colors={['#1a1a2e', '#16213e', '#0f0f0f']} style={StyleSheet.absoluteFill} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Initializing call...</Text>
+          <Text style={styles.loadingText}>Connecting call...</Text>
         </View>
       </SafeAreaView>
     );
@@ -147,184 +240,246 @@ const VoiceCallScreen: React.FC<Props> = ({ route, navigation }) => {
         contact={contact}
         navigation={navigation}
         insets={insets}
+        callId={callId}
       />
     </LiveKitRoom>
   );
 };
 
-interface VoiceCallContentProps {
-  contact: ChatContact;
-  navigation: VoiceCallNavigationProp;
+// Calling screen shown while waiting for answer
+interface CallingScreenProps {
+  contact: any;
   insets: any;
+  onCancel: () => void;
 }
 
-const VoiceCallContent: React.FC<VoiceCallContentProps> = ({ contact, navigation, insets }) => {
+const CallingScreen: React.FC<CallingScreenProps> = ({ contact, insets, onCancel }) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const ringAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Pulse animation
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+
+    // Ring animation
+    const ring = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ringAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(ringAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+    ring.start();
+
+    return () => {
+      pulse.stop();
+      ring.stop();
+    };
+  }, []);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#1a1a2e', '#16213e', '#0f0f0f']} style={StyleSheet.absoluteFill} />
+
+      <View style={[styles.callingHeader, { paddingTop: insets.top + 20 }]}>
+        <View style={styles.callingTypeContainer}>
+          <Ionicons name="call" size={18} color="#FF8A00" />
+          <Text style={styles.callingTypeText}>Voice Call</Text>
+        </View>
+      </View>
+
+      <View style={styles.callingContent}>
+        {/* Ring effect */}
+        <Animated.View
+          style={[
+            styles.ringEffect,
+            {
+              transform: [{ scale: ringAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 2] }) }],
+              opacity: ringAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 0.2, 0] }),
+            },
+          ]}
+        />
+
+        <Animated.View style={[styles.callingAvatar, { transform: [{ scale: pulseAnim }] }]}>
+          {contact.avatarUrl ? (
+            <Image source={{ uri: contact.avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient colors={['#FF8A00', '#FF6B00']} style={styles.avatarGradient}>
+              <Text style={styles.avatarText}>
+                {contact.avatar || contact.name?.charAt(0).toUpperCase()}
+              </Text>
+            </LinearGradient>
+          )}
+        </Animated.View>
+
+        <Text style={styles.callingName}>{contact.name}</Text>
+        <Text style={styles.callingStatus}>Calling...</Text>
+      </View>
+
+      <View style={[styles.callingActions, { paddingBottom: insets.bottom + 40 }]}>
+        <TouchableOpacity style={styles.cancelCallButton} onPress={onCancel}>
+          <Ionicons name="call" size={32} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.cancelText}>Cancel</Text>
+      </View>
+    </SafeAreaView>
+  );
+};
+
+interface VoiceCallContentProps {
+  contact: any;
+  navigation: any;
+  insets: any;
+  callId: string | null;
+}
+
+const VoiceCallContent: React.FC<VoiceCallContentProps> = ({ contact, navigation, insets, callId }) => {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
-  const tracks = useTracks([Track.Source.Microphone]);
 
-  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'ended'>('connecting');
+  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'ended'>('connecting');
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-  const [translations, setTranslations] = useState<TranslationBubble[]>([]);
-  const [showTranslations, setShowTranslations] = useState(true);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [remoteParticipantConnected, setRemoteParticipantConnected] = useState(false);
+  const [callAnswerLogged, setCallAnswerLogged] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const translateAnim = useRef(new Animated.Value(0)).current;
+  const callDurationRef = useRef(callDuration);
 
-  // Handle room events
+  // Keep ref updated for disconnect handler
+  useEffect(() => {
+    callDurationRef.current = callDuration;
+  }, [callDuration]);
+
+  // Handle room events with reconnection support
   useEffect(() => {
     if (!room) return;
 
     const handleConnected = () => {
+      console.log('[VoiceCall] Room connected');
       setCallStatus('connected');
+      setReconnectAttempt(0);
     };
 
-    const handleDisconnected = () => {
+    const handleReconnecting = () => {
+      console.log('[VoiceCall] Reconnecting...');
+      setCallStatus('reconnecting');
+      setReconnectAttempt(prev => prev + 1);
+    };
+
+    const handleReconnected = () => {
+      console.log('[VoiceCall] Reconnected successfully');
+      setCallStatus('connected');
+      setReconnectAttempt(0);
+    };
+
+    const handleDisconnected = (reason?: DisconnectReason) => {
+      console.log('[VoiceCall] Disconnected, reason:', reason);
       setCallStatus('ended');
-      Alert.alert('Call Ended', `Call duration: ${formatTime(callDuration)}`, [
+      callSignaling.endCall();
+
+      // Determine message based on disconnect reason
+      let message = `Call duration: ${formatTime(callDurationRef.current)}`;
+      let title = 'Call Ended';
+
+      if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+        title = 'Session Conflict';
+        message = 'You joined this call from another device.';
+      } else if (reason === DisconnectReason.ROOM_DELETED) {
+        message = 'The call has been ended.';
+      } else if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+        title = 'Removed';
+        message = 'You have been removed from the call.';
+      } else if (reason === DisconnectReason.JOIN_FAILURE) {
+        title = 'Connection Failed';
+        message = 'Could not join the call. Please check your connection.';
+      }
+
+      Alert.alert(title, message, [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     };
 
     const handleParticipantConnected = () => {
+      console.log('[VoiceCall] Remote participant connected');
       setRemoteParticipantConnected(true);
     };
 
     const handleParticipantDisconnected = () => {
+      console.log('[VoiceCall] Remote participant disconnected');
       setRemoteParticipantConnected(false);
       Alert.alert('Participant Left', 'The other participant has left the call.', [
         { text: 'OK', onPress: () => endCall() }
       ]);
     };
 
-    const handleError = (error: Error) => {
-      console.error('Room error:', error);
-      Alert.alert('Connection Error', error.message);
-    };
-
     room.on(RoomEvent.Connected, handleConnected);
+    room.on(RoomEvent.Reconnecting, handleReconnecting);
+    room.on(RoomEvent.Reconnected, handleReconnected);
     room.on(RoomEvent.Disconnected, handleDisconnected);
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
-    room.on(RoomEvent.MediaDevicesError, handleError);
 
-    // Check if already connected
-    if (room.state === ConnectionState.Connected) {
-      setCallStatus('connected');
-    }
+    if (room.state === ConnectionState.Connected) setCallStatus('connected');
 
     return () => {
       room.off(RoomEvent.Connected, handleConnected);
+      room.off(RoomEvent.Reconnecting, handleReconnecting);
+      room.off(RoomEvent.Reconnected, handleReconnected);
       room.off(RoomEvent.Disconnected, handleDisconnected);
       room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
       room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
-      room.off(RoomEvent.MediaDevicesError, handleError);
     };
-  }, [room, navigation, callDuration]);
+  }, [room, navigation]);
 
   // Check for remote participants
   useEffect(() => {
     const remoteParticipants = participants.filter(p => !p.isLocal);
-    setRemoteParticipantConnected(remoteParticipants.length > 0);
-  }, [participants]);
+    const hasRemote = remoteParticipants.length > 0;
+    setRemoteParticipantConnected(hasRemote);
+
+    if (hasRemote && !callAnswerLogged && callId) {
+      logCallAnswered(callId);
+      setCallAnswerLogged(true);
+    }
+  }, [participants, callAnswerLogged, callId]);
 
   // Call duration timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (callStatus === 'connected') {
-      interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
+    if (callStatus === 'connected' && remoteParticipantConnected) {
+      interval = setInterval(() => setCallDuration(prev => prev + 1), 1000);
     }
     return () => clearInterval(interval);
-  }, [callStatus]);
+  }, [callStatus, remoteParticipantConnected]);
 
-  // Pulse animation for avatar
+  // Pulse animation
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
     );
     pulse.start();
-
     return () => pulse.stop();
-  }, [pulseAnim]);
+  }, []);
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
-      if (room) {
-        room.disconnect();
-      }
+      if (room) room.disconnect();
     };
   }, [room]);
-
-  // Simulate real-time translations (for demo purposes)
-  useEffect(() => {
-    if (callStatus !== 'connected') return;
-
-    const mockTranslations = [
-      {
-        originalText: "Ndewo, kedu ka i mere?",
-        translatedText: "Hello, how are you doing?",
-        speaker: 'them' as const,
-      },
-      {
-        originalText: "I'm doing well, thank you!",
-        translatedText: "Ana m eme nke oma, daalu!",
-        speaker: 'me' as const,
-      },
-      {
-        originalText: "Achoro m ikoro gi banyere ihe omuma",
-        translatedText: "I want to tell you about something interesting",
-        speaker: 'them' as const,
-      },
-      {
-        originalText: "That sounds great, I'm listening",
-        translatedText: "Nke ahu di mma, ana m ege nti",
-        speaker: 'me' as const,
-      },
-    ];
-
-    let index = 0;
-    const translationTimer = setInterval(() => {
-      if (index < mockTranslations.length) {
-        const newTranslation: TranslationBubble = {
-          id: Date.now().toString(),
-          ...mockTranslations[index],
-          timestamp: formatTime(callDuration + index * 15),
-        };
-
-        setTranslations(prev => [...prev, newTranslation]);
-
-        Animated.timing(translateAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start();
-
-        index++;
-      } else {
-        clearInterval(translationTimer);
-      }
-    }, 15000);
-
-    return () => clearInterval(translationTimer);
-  }, [callStatus, callDuration, translateAnim]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -334,22 +489,13 @@ const VoiceCallContent: React.FC<VoiceCallContentProps> = ({ contact, navigation
 
   const endCall = useCallback(() => {
     setCallStatus('ended');
-    Alert.alert(
-      'Call Ended',
-      `Call duration: ${formatTime(callDuration)}\nTranslations provided: ${translations.length}`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (room) {
-              room.disconnect();
-            }
-            navigation.goBack();
-          },
-        },
-      ]
-    );
-  }, [room, callDuration, translations.length, navigation]);
+    if (callId) {
+      logCallEnd(callId, callAnswerLogged ? 'caller_ended' : 'missed');
+    }
+    callSignaling.endCall();
+    if (room) room.disconnect();
+    navigation.goBack();
+  }, [room, navigation, callId, callAnswerLogged]);
 
   const toggleMute = useCallback(async () => {
     if (localParticipant) {
@@ -362,176 +508,94 @@ const VoiceCallContent: React.FC<VoiceCallContentProps> = ({ contact, navigation
   const toggleSpeaker = useCallback(async () => {
     const newSpeakerOn = !isSpeakerOn;
     setIsSpeakerOn(newSpeakerOn);
-
     await AudioSession.configureAudio({
       android: {
         preferredOutputList: newSpeakerOn ? ['speaker'] : ['earpiece'],
+        audioTypeOptions: {
+          audioAttributesUsageType: 'voiceCommunication',
+          audioAttributesContentType: 'speech',
+        },
       },
-      ios: {
-        defaultOutput: newSpeakerOn ? 'speaker' : 'earpiece',
-      },
+      ios: { defaultOutput: newSpeakerOn ? 'speaker' : 'earpiece' },
     });
   }, [isSpeakerOn]);
 
-  const toggleTranslations = () => {
-    setShowTranslations(!showTranslations);
-  };
-
-  const renderTranslationBubble = ({ item: translation }: { item: TranslationBubble }) => {
-    const isMe = translation.speaker === 'me';
-
-    return (
-      <Animated.View
-        key={translation.id}
-        style={[
-          styles.translationBubble,
-          isMe ? styles.myTranslationBubble : styles.theirTranslationBubble,
-        ]}
-      >
-        <View style={styles.translationHeader}>
-          <Text style={[
-            styles.speakerLabel,
-            isMe ? styles.mySpeakerLabel : styles.theirSpeakerLabel
-          ]}>
-            {isMe ? 'You' : contact.name}
-          </Text>
-          <Text style={styles.translationTime}>{translation.timestamp}</Text>
-        </View>
-
-        <Text style={[
-          styles.originalText,
-          isMe ? styles.myOriginalText : styles.theirOriginalText
-        ]}>
-          "{translation.originalText}"
-        </Text>
-
-        <Text style={[
-          styles.translatedText,
-          isMe ? styles.myTranslatedText : styles.theirTranslatedText
-        ]}>
-          {translation.translatedText}
-        </Text>
-      </Animated.View>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1F2937" />
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#1a1a2e', '#16213e', '#0f0f0f']} style={StyleSheet.absoluteFill} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + height * 0.02 }]}>
-        <TouchableOpacity onPress={() => {
-          if (room) room.disconnect();
-          navigation.goBack();
-        }}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={endCall} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>LinguaCall</Text>
-        <TouchableOpacity onPress={toggleTranslations}>
-          <Ionicons
-            name={showTranslations ? "eye" : "eye-off"}
-            size={24}
-            color="#FFFFFF"
-          />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Voice Call</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Call Status */}
-      <View style={styles.callStatusContainer}>
-        <Text style={styles.callStatusText}>
+      <View style={styles.statusContainer}>
+        {callStatus === 'reconnecting' && (
+          <View style={styles.reconnectingBanner}>
+            <ActivityIndicator size="small" color="#FF8A00" style={{ marginRight: 8 }} />
+            <Text style={styles.reconnectingText}>
+              Reconnecting{reconnectAttempt > 1 ? ` (attempt ${reconnectAttempt})` : ''}...
+            </Text>
+          </View>
+        )}
+        <Text style={styles.statusText}>
           {callStatus === 'connecting' && 'Connecting...'}
           {callStatus === 'connected' && (remoteParticipantConnected
-            ? `Connected - ${formatTime(callDuration)}`
+            ? formatTime(callDuration)
             : `Waiting for ${contact.name}...`)}
+          {callStatus === 'reconnecting' && formatTime(callDuration)}
           {callStatus === 'ended' && 'Call Ended'}
         </Text>
-
-        <View style={styles.languageInfo}>
-          <Text style={styles.languageInfoText}>
-            Real-time translation: Your language - {contact.language}
-          </Text>
-        </View>
       </View>
 
       {/* Contact Info */}
       <View style={styles.contactContainer}>
-        <Animated.View
-          style={[
-            styles.contactAvatar,
-            {
-              transform: [{ scale: pulseAnim }],
-            },
-          ]}
-        >
-          <Text style={styles.contactAvatarText}>{contact.avatar}</Text>
-          {callStatus === 'connected' && remoteParticipantConnected && (
-            <View style={styles.speakingIndicator}>
-              <Ionicons name="mic" size={16} color="#10B981" />
+        <Animated.View style={[styles.contactAvatar, { transform: [{ scale: pulseAnim }] }]}>
+          {contact.avatarUrl ? (
+            <Image source={{ uri: contact.avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient colors={['#FF8A00', '#FF6B00']} style={styles.avatarGradient}>
+              <Text style={styles.contactAvatarText}>
+                {contact.avatar || contact.name?.charAt(0).toUpperCase()}
+              </Text>
+            </LinearGradient>
+          )}
+          {remoteParticipantConnected && (
+            <View style={styles.activeIndicator}>
+              <Ionicons name="mic" size={14} color="#FFFFFF" />
             </View>
           )}
         </Animated.View>
-
         <Text style={styles.contactName}>{contact.name}</Text>
-        <Text style={styles.contactLanguage}>Speaking {contact.language}</Text>
       </View>
 
-      {/* Real-time Translations */}
-      {showTranslations && (
-        <View style={styles.translationsContainer}>
-          <Text style={styles.translationsHeader}>Live Translations</Text>
-          <FlatList
-            data={translations.slice(-3)}
-            renderItem={renderTranslationBubble}
-            keyExtractor={item => item.id}
-            style={styles.translationsList}
-          />
-        </View>
-      )}
-
       {/* Call Controls */}
-      <View style={styles.controlsContainer}>
+      <View style={[styles.controlsContainer, { paddingBottom: insets.bottom + 30 }]}>
         <TouchableOpacity
-          style={[styles.controlButton, isMuted && styles.activeControlButton]}
+          style={[styles.controlButton, isMuted && styles.controlButtonActive]}
           onPress={toggleMute}
         >
-          <Ionicons
-            name={isMuted ? "mic-off" : "mic"}
-            size={24}
-            color={isMuted ? "#EF4444" : "#FFFFFF"}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.controlButton, isSpeakerOn && styles.activeControlButton]}
-          onPress={toggleSpeaker}
-        >
-          <Ionicons
-            name={isSpeakerOn ? "volume-high" : "volume-low"}
-            size={24}
-            color="#FFFFFF"
-          />
+          <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={26} color="#FFFFFF" />
+          <Text style={styles.controlLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.endCallButton} onPress={endCall}>
-          <Ionicons name="call" size={28} color="#FFFFFF" />
+          <Ionicons name="call" size={32} color="#FFFFFF" style={{ transform: [{ rotate: '135deg' }] }} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.controlButton}>
-          <Ionicons name="keypad" size={24} color="#FFFFFF" />
+        <TouchableOpacity
+          style={[styles.controlButton, isSpeakerOn && styles.controlButtonActive]}
+          onPress={toggleSpeaker}
+        >
+          <Ionicons name={isSpeakerOn ? 'volume-high' : 'volume-low'} size={26} color="#FFFFFF" />
+          <Text style={styles.controlLabel}>Speaker</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.controlButton}>
-          <Ionicons name="person-add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Translation Info */}
-      <View style={styles.translationInfoContainer}>
-        <Ionicons name="language" size={20} color="#10B981" />
-        <Text style={styles.translationInfoText}>
-          AI-powered real-time translation active
-        </Text>
       </View>
     </SafeAreaView>
   );
@@ -540,7 +604,7 @@ const VoiceCallContent: React.FC<VoiceCallContentProps> = ({ contact, navigation
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1F2937',
+    backgroundColor: '#0f0f0f',
   },
   loadingContainer: {
     flex: 1,
@@ -551,182 +615,187 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
   },
+  // Calling screen styles
+  callingHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  callingTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 138, 0, 0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  callingTypeText: {
+    color: '#FF8A00',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  callingContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ringEffect: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 2,
+    borderColor: '#FF8A00',
+  },
+  callingAvatar: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  callingName: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  callingStatus: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  callingActions: {
+    alignItems: 'center',
+  },
+  cancelCallButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    transform: [{ rotate: '135deg' }],
+  },
+  cancelText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginTop: 12,
+  },
+  // Active call styles
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: width * 0.05,
+    paddingHorizontal: 16,
     paddingBottom: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  callStatusContainer: {
+  statusContainer: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 8,
   },
-  callStatusText: {
+  statusText: {
     fontSize: 16,
-    color: '#D1D5DB',
-    fontWeight: '500',
-  },
-  languageInfo: {
-    marginTop: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  languageInfoText: {
-    fontSize: 12,
-    color: '#10B981',
+    color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '500',
   },
   contactContainer: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  contactAvatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#374151',
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-    position: 'relative',
+  },
+  contactAvatar: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 56,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   contactAvatarText: {
-    fontSize: 60,
+    fontSize: 64,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
-  speakingIndicator: {
+  activeIndicator: {
     position: 'absolute',
     bottom: 8,
     right: 8,
     backgroundColor: '#10B981',
-    borderRadius: 12,
-    padding: 4,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   contactName: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  contactLanguage: {
-    fontSize: 16,
-    color: '#D1D5DB',
-  },
-  translationsContainer: {
-    flex: 1,
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
-  },
-  translationsHeader: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  translationsList: {
-    flex: 1,
-  },
-  translationBubble: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-  },
-  myTranslationBubble: {
-    borderLeftColor: '#FF8A00',
-    alignSelf: 'flex-end',
-    maxWidth: '85%',
-  },
-  theirTranslationBubble: {
-    borderLeftColor: '#10B981',
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-  },
-  translationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  speakerLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  mySpeakerLabel: {
-    color: '#FF8A00',
-  },
-  theirSpeakerLabel: {
-    color: '#10B981',
-  },
-  translationTime: {
-    fontSize: 10,
-    color: '#9CA3AF',
-  },
-  originalText: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  myOriginalText: {
-    color: '#FFFFFF',
-  },
-  theirOriginalText: {
-    color: '#FFFFFF',
-  },
-  translatedText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  myTranslatedText: {
-    color: '#FCD34D',
-  },
-  theirTranslatedText: {
-    color: '#86EFAC',
   },
   controlsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingHorizontal: width * 0.1,
-    paddingVertical: 32,
+    paddingHorizontal: 30,
   },
   controlButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#374151',
-    justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
-  activeControlButton: {
-    backgroundColor: '#EF4444',
+  controlButtonActive: {
+    backgroundColor: 'rgba(255, 138, 0, 0.2)',
+    borderRadius: 16,
+  },
+  controlLabel: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    marginTop: 8,
   },
   endCallButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#EF4444',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  translationInfoContainer: {
+  reconnectingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 16,
+    backgroundColor: 'rgba(255, 138, 0, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 8,
   },
-  translationInfoText: {
-    marginLeft: 8,
-    fontSize: 12,
-    color: '#10B981',
+  reconnectingText: {
+    color: '#FF8A00',
+    fontSize: 14,
     fontWeight: '500',
   },
 });

@@ -1,17 +1,21 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import { supabase } from '../supabaseClient';
+import { useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-expo';
+import { useOAuth } from '@clerk/clerk-expo'; // For Google
+import * as Linking from 'expo-linking';
+import { supabase, setSupabaseToken } from '../supabaseClient';
+import { setAuthTokenProvider } from '../services/authFetch';
 import { identifyUser, resetUser, trackEvent, AnalyticsEvents } from '../services/analytics';
-import { API_BASE_URL } from '../config';
 
+// Define the shape of our Auth Context
+// We keep it compatible with the previous Supabase interface as much as possible
 type AuthContextValue = {
-  session: import('@supabase/supabase-js').Session | null;
-  user: import('@supabase/supabase-js').User | null;
+  session: any | null; // Clerk session
+  user: any | null;    // Clerk user
   loading: boolean;
+  supabaseSynced: boolean;
   signIn: (email: string, password: string) => Promise<null | string>;
   signInWithGoogle: () => Promise<null | string>;
+  signInWithApple: () => Promise<null | string>; // Added signInWithApple
   signUp: (
     params: {
       email: string;
@@ -29,412 +33,323 @@ type AuthContextValue = {
   resetPassword: (email: string) => Promise<null | string>;
   updatePassword: (newPassword: string) => Promise<null | string>;
   signOut: () => Promise<void>;
+  refreshProfile: () => void;
+  profileVersion: number;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
+  const { isLoaded, isSignedIn, userId, sessionId, getToken, signOut: clerkSignOut } = useAuth();
+  const { user: clerkUser } = useUser();
+  const { signIn: clerkSignIn, setActive: setSignInActive, isLoaded: isSignInLoaded } = useSignIn();
+  const { signUp: clerkSignUp, setActive: setSignUpActive, isLoaded: isSignUpLoaded } = useSignUp();
+
+  // Google OAuth Hook
+  const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: 'oauth_google' });
+  // Apple OAuth Hook
+  const { startOAuthFlow: startAppleFlow } = useOAuth({ strategy: 'oauth_apple' });
+
   const [loading, setLoading] = useState(true);
+  const [profileVersion, setProfileVersion] = useState(0);
+
+  const refreshProfile = () => {
+    console.log("AuthProvider: Forcing profile refresh");
+    setProfileVersion(v => v + 1);
+  };
+
+  // Sync loading state
+  useEffect(() => {
+    if (isLoaded && isSignInLoaded && isSignUpLoaded) {
+      setLoading(false);
+    }
+  }, [isLoaded, isSignInLoaded, isSignUpLoaded]);
+
+  // Wire up Clerk token to authFetch so API calls are authenticated
+  useEffect(() => {
+    if (isSignedIn && userId) {
+      setAuthTokenProvider(
+        () => getToken({ template: 'supabase' }), // Use Supabase template (HS256) for backend compatibility
+        userId
+      );
+    } else {
+      setAuthTokenProvider(() => Promise.resolve(null), null);
+    }
+  }, [isSignedIn, userId, getToken]);
+
+  // Sync Supabase with Clerk JWT (Optional - enables Row Level Security)
+  const [supabaseSynced, setSupabaseSynced] = useState(false);
 
   useEffect(() => {
-    const init = async () => {
-      console.log('AuthProvider: init starting');
-      try {
-        // Increased timeout from 3s to 10s for slower connections
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Session fetch timed out')), 10000)
-        );
+    let refreshInterval: NodeJS.Timeout | null = null;
+    let syncTimeout: NodeJS.Timeout | null = null;
 
-        const sessionPromise = supabase.auth.getSession();
-
-        const { data } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-
-        console.log('AuthProvider: session retrieved', !!data?.session);
-        setSession(data?.session ?? null);
-      } catch (e: any) {
-        console.error('AuthProvider: init error/timeout', e?.message || e);
-        // On timeout or error, assume no session so app can at least load
-        setSession(null);
-      } finally {
-        setLoading(false);
-        console.log('AuthProvider: loading set to false');
-      }
-    };
-    init();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log('Auth state changed:', event, newSession?.user?.email);
-      setSession(newSession);
-      setLoading(false);
-
-      // Handle OAuth sign-in success (only for OAuth, not email signup)
-      if (event === 'SIGNED_IN' && newSession?.user && newSession.user.app_metadata?.provider === 'google') {
-        await handleOAuthSignIn(newSession.user);
-      }
-
-      // On any successful sign-in, ensure referral code exists and attribute invite if present
-      if (event === 'SIGNED_IN' && newSession?.user) {
-        try {
-          await ensureReferralSetup(newSession.user, newSession.access_token);
-          await syncLocationFromMetadata(newSession.user);
-
-          // Identify user in PostHog analytics
-          const userMeta = newSession.user.user_metadata as any;
-          identifyUser(newSession.user.id, {
-            email: newSession.user.email,
-            username: userMeta?.username,
-            full_name: userMeta?.full_name,
-            primary_language: userMeta?.primary_language,
-            country: userMeta?.country,
-            created_at: newSession.user.created_at,
-          });
-
-          // Track login event
-          trackEvent(AnalyticsEvents.USER_LOGGED_IN, {
-            provider: newSession.user.app_metadata?.provider || 'email',
-          });
-        } catch (e) {
-          console.log('Post sign-in referral setup error:', e);
-        }
-      }
-
-      // On sign out, reset analytics user
-      if (event === 'SIGNED_OUT') {
-        resetUser();
-        trackEvent(AnalyticsEvents.USER_LOGGED_OUT);
-      }
-    });
-    return () => {
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  const user = session?.user ?? null;
-
-  const signIn: AuthContextValue['signIn'] = async (email, password) => {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return error ? error.message : null;
-    } catch (error: any) {
-      return error?.message || 'An unexpected error occurred';
-    }
-  };
-
-  const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
-    setLoading(true);
-    try {
-      // Create redirect URI for OAuth/email callbacks (Expo Go & dev builds)
-      // Route mapped in App.tsx as AuthCallback → 'auth-callback'
-      // Use web redirect for production, custom scheme for development
-      const redirectUri = __DEV__
-        ? AuthSession.makeRedirectUri({
-          scheme: 'lingualink',
-          path: 'auth-callback',
-        })
-        : 'https://lingualinknew.netlify.app';
-
-      console.log('Google OAuth redirect URI:', redirectUri);
-
-      // Start OAuth flow
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUri,
-          skipBrowserRedirect: true, // We'll handle the redirect manually
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) {
-        console.error('Google OAuth error:', error);
-        return `OAuth Error: ${error.message}`;
-      }
-
-      if (!data.url) {
-        console.error('No OAuth URL received');
-        return 'Failed to get OAuth URL from Supabase';
-      }
-
-      console.log('Opening OAuth URL:', data.url);
-
-      // Open the OAuth URL in browser
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectUri,
-        {
-          showInRecents: true,
-          preferEphemeralSession: true,
-        }
-      );
-
-      console.log('OAuth result:', result);
-
-      if (result.type === 'success' && result.url) {
-        console.log('OAuth success, URL:', result.url);
-
-        // Parse the URL to extract the session
-        try {
-          const url = new URL(result.url);
-          const code = url.searchParams.get('code');
-          const error = url.searchParams.get('error');
-
-          if (error) {
-            console.error('OAuth error in URL:', error);
-            return `OAuth Error: ${error}`;
-          }
-
-          if (code) {
-            const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-
-            if (exchangeError) {
-              console.error('Code exchange error:', exchangeError);
-              return `Session Error: ${exchangeError.message}`;
-            }
-
-            console.log('Session retrieved successfully');
-            return null; // Success
-          } else {
-            console.error('No code found in redirect URL');
-            return 'No authentication code received';
-          }
-        } catch (urlError) {
-          console.error('Error parsing redirect URL:', urlError);
-          return 'Error processing OAuth redirect';
-        }
-      } else if (result.type === 'cancel') {
-        console.log('OAuth cancelled by user');
-        return 'Google sign-in was cancelled';
-      } else {
-        console.log('OAuth failed:', result);
-        return `OAuth failed: ${result.type}`;
-      }
-    } catch (e: any) {
-      console.error('Google sign-in exception:', e);
-      return `Exception: ${e?.message || 'Unknown error occurred'}`;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOAuthSignIn = async (user: import('@supabase/supabase-js').User) => {
-    try {
-      // Check if user profile exists
-      const { data: existingProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Error checking profile:', profileError);
+    const refreshSupabaseToken = async () => {
+      if (!isSignedIn || !userId) {
+        setSupabaseToken(null);
+        setSupabaseSynced(false);
         return;
       }
 
-      // If profile doesn't exist, create one
-      if (!existingProfile) {
-        const userMetadata = user.user_metadata;
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: userMetadata?.full_name || userMetadata?.name || '',
-            username: userMetadata?.username || userMetadata?.email?.split('@')[0] || '',
-            avatar_url: userMetadata?.avatar_url || '',
-            primary_language: userMetadata?.primary_language || 'English',
-            country: (userMetadata as any)?.country || null,
-            state: (userMetadata as any)?.state || null,
-            city: (userMetadata as any)?.city || null,
-            lga: (userMetadata as any)?.lga || null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
+      try {
+        console.log('AuthProvider: Fetching Supabase token...');
+        // Get fresh JWT token from Clerk's "supabase" template
+        // skipCache ensures we always get a fresh token
+        const token = await getToken({ template: 'supabase', skipCache: true });
 
-        if (insertError) {
-          console.error('Error creating profile:', insertError);
+        if (token) {
+          console.log('AuthProvider: Supabase token received, synced!');
+          setSupabaseToken(token);
+          setSupabaseSynced(true);
         } else {
+          console.warn('AuthProvider: No token returned from Clerk, proceeding anyway');
+          setSupabaseToken(null);
+          // Still mark as synced to allow app to proceed (degraded mode)
+          setSupabaseSynced(true);
         }
+      } catch (e: any) {
+        if (e.message?.includes('No JWT template exists')) {
+          console.warn('AuthProvider: JWT template "supabase" not found. Create it in Clerk Dashboard. Proceeding in degraded mode.');
+        } else {
+          console.warn('AuthProvider: Token refresh error:', e.message, '- Proceeding in degraded mode.');
+        }
+        setSupabaseToken(null);
+        // Mark as synced anyway to prevent infinite loading
+        setSupabaseSynced(true);
       }
-    } catch (error) {
-      console.error('Error in handleOAuthSignIn:', error);
+    };
+
+    // Safety timeout: if sync doesn't complete in 5 seconds, proceed anyway
+    if (isSignedIn && userId) {
+      syncTimeout = setTimeout(() => {
+        if (!supabaseSynced) {
+          console.warn('AuthProvider: Sync timeout - proceeding without Supabase token');
+          setSupabaseSynced(true);
+        }
+      }, 5000);
     }
-  };
 
-  const generateReferralCode = () => {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // exclude easily confused chars
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+
+    // Initial token fetch
+    refreshSupabaseToken();
+
+    // Refresh token every 50 seconds (before 60-second default expiry)
+    if (isSignedIn && userId) {
+      refreshInterval = setInterval(refreshSupabaseToken, 50 * 1000);
     }
-    return code;
-  };
 
-  const ensureReferralSetup = async (user: import('@supabase/supabase-js').User, accessToken?: string) => {
-    // Attribute referral if invite code was provided in metadata
-    const inviteCodeRaw = (user.user_metadata as any)?.invite_code_input as string | undefined;
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+      if (syncTimeout) {
+        clearTimeout(syncTimeout);
+      }
+    };
+  }, [isSignedIn, userId, getToken]);
 
-    if (inviteCodeRaw && accessToken) {
-      const inviteCode = inviteCodeRaw.trim();
-      if (inviteCode) {
-        try {
-          await fetch(`${API_BASE_URL}/ambassador/referral`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`,
-              'x-user-id': user.id,
+  // Global Presence Tracking
+  useEffect(() => {
+    let channel: any = null;
+
+    const trackPresence = async () => {
+      if (!isSignedIn || !userId || !supabaseSynced) return;
+
+      try {
+        console.log('AuthProvider: Joining global presence channel...');
+        channel = supabase.channel('users_presence', {
+          config: {
+            presence: {
+              key: userId,
             },
-            body: JSON.stringify({ code: inviteCode }),
-          });
-
-          // Clear metadata
-          await supabase.auth.updateUser({ data: { invite_code_input: null } });
-        } catch (e) {
-          console.log('Error setting up referral:', e);
-        }
-      }
-    }
-  };
-
-  const syncLocationFromMetadata = async (user: import('@supabase/supabase-js').User) => {
-    try {
-      const meta = user.user_metadata as any;
-      const hasAny = meta?.country || meta?.state || meta?.city || meta?.lga;
-      if (!hasAny) return;
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          country: meta.country || null,
-          state: meta.state || null,
-          city: meta.city || null,
-          lga: meta.lga || null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
-    } catch (e) {
-      console.log('syncLocationFromMetadata error', e);
-    }
-  };
-
-  const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, username, primaryLanguage, inviteCode, country, state, city, lga }) => {
-    setLoading(true);
-    try {
-      // Check if email already exists
-      const { data: existingEmail, error: emailCheckErr } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle();
-      if (emailCheckErr) return emailCheckErr.message;
-      if (existingEmail) return 'An account with this email already exists';
-
-      // Ensure unique username
-      const { data: existing, error: checkErr } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username)
-        .maybeSingle();
-      if (checkErr) return checkErr.message;
-      if (existing) return 'Username is already taken';
-
-      // Compute redirect for email confirmation links (works in Expo Go)
-      const emailRedirectTo = __DEV__
-        ? AuthSession.makeRedirectUri({
-          scheme: 'lingualink',
-          path: 'auth-callback',
-        })
-        : 'https://lingualinknew.netlify.app';
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            username,
-            primary_language: primaryLanguage,
-            // Persist invite code temporarily in metadata; backend will process on first sign-in
-            invite_code_input: inviteCode || null,
-            // Store location in metadata for now (not persisted to profiles yet)
-            country: country || null,
-            state: state || null,
-            city: city || null,
-            lga: lga || null,
           },
-          emailRedirectTo,
-        },
-      });
-      if (error) return error.message;
+        });
 
-      // For email signup, we expect no session until email is confirmed
-      // Return success to show verification screen, but don't create session yet
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetPassword = async (email: string) => {
-    try {
-      // Compute redirect for password reset links
-      const emailRedirectTo = __DEV__
-        ? AuthSession.makeRedirectUri({
-          scheme: 'lingualink',
-          path: 'auth-callback',
-        })
-        : 'https://lingualinknew.netlify.app';
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: emailRedirectTo,
-      });
-
-      if (error) {
-        return error.message;
+        channel
+          .on('presence', { event: 'sync' }, () => {
+            // Optional: You could store who is online in a context state if needed
+            // const state = channel.presenceState();
+            // console.log('Global presence sync:', Object.keys(state).length);
+          })
+          .subscribe(async (status: string) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('AuthProvider: Subscribed to presence');
+              await channel.track({
+                userId: userId,
+                online_at: new Date().toISOString()
+              });
+            }
+          });
+      } catch (err) {
+        console.warn('AuthProvider: Presence error', err);
       }
+    };
 
-      return null; // Success
-    } catch (error: any) {
-      return error?.message || 'An unexpected error occurred';
+    trackPresence();
+
+    return () => {
+      if (channel) {
+        console.log('AuthProvider: Leaving presence channel');
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [isSignedIn, userId, supabaseSynced]);
+
+
+  // Wrapper for SignIn
+  const signIn: AuthContextValue['signIn'] = async (email, password) => {
+    if (!isSignInLoaded) return 'Auth not loaded';
+    try {
+      const result = await clerkSignIn.create({
+        identifier: email,
+        password,
+      });
+
+      if (result.status === 'complete') {
+        await setSignInActive({ session: result.createdSessionId });
+        return null;
+      } else {
+        return 'Sign in incomplete. Check email verification.';
+      }
+    } catch (err: any) {
+      console.error('SignIn Error:', err);
+      // Clerk errors array
+      return err.errors?.[0]?.message || err.message || 'Sign in failed';
     }
   };
 
+  // Wrapper for Google SignIn
+  const signInWithGoogle: AuthContextValue['signInWithGoogle'] = async () => {
+    try {
+      const { createdSessionId, setActive } = await startGoogleFlow({
+        redirectUrl: Linking.createURL('/dashboard', { scheme: 'lingualink' }),
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+        return null;
+      }
+      return 'OAuth cancelled or failed';
+    } catch (err: any) {
+      console.error('OAuth Error:', err);
+      return err.message || 'Google Sign In failed';
+    }
+  };
+
+  // Wrapper for Apple SignIn
+  const signInWithApple: AuthContextValue['signInWithApple'] = async () => {
+    try {
+      const { createdSessionId, setActive } = await startAppleFlow({
+        redirectUrl: Linking.createURL('/dashboard', { scheme: 'lingualink' }),
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+        return null;
+      }
+      return 'OAuth cancelled or failed';
+    } catch (err: any) {
+      console.error('Apple OAuth Error:', err);
+      return err.message || 'Apple Sign In failed';
+    }
+  };
+
+  // Wrapper for SignUp
+  const signUp: AuthContextValue['signUp'] = async ({
+    email,
+    password,
+    username,
+    fullName,
+    primaryLanguage,
+    inviteCode,
+    country,
+    state,
+    city,
+    lga
+  }) => {
+    if (!isSignUpLoaded) return 'Auth not loaded';
+    try {
+      // 1. Create User in Clerk
+      const result = await clerkSignUp.create({
+        emailAddress: email,
+        password,
+        username, // Clerk supports username
+        unsafeMetadata: {
+          full_name: fullName,
+          primary_language: primaryLanguage,
+          invite_code: inviteCode,
+          country,
+          state,
+          city,
+          lga
+        }
+      });
+
+      // 2. Prepare Email Verification (Supabase flow expected verification)
+      await clerkSignUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+
+      // Return null (success) so app navigates to VerifyEmailScreen
+      return null;
+    } catch (err: any) {
+      console.error('SignUp Error:', err);
+      return err.errors?.[0]?.message || err.message || 'Sign up failed';
+    }
+  };
+
+  // Implement SignOut
+  const signOut = async () => {
+    await clerkSignOut();
+    // Analytics
+    resetUser();
+    trackEvent(AnalyticsEvents.USER_LOGGED_OUT);
+  };
+
+  // Placeholders for Password Reset (To be implemented with Clerk flow if needed)
+  const resetPassword = async (email: string) => {
+    // Trigger email code flow
+    // For now, return "Check your email" simulated
+    return 'Password reset flow requires code verification update';
+  };
   const updatePassword = async (newPassword: string) => {
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (error) {
-        return error.message;
+      // In Clerk, updating password uses a specific method
+      if (clerkUser) {
+        await clerkUser.updatePassword({ newPassword });
+        return null;
       }
-
-      return null; // Success
-    } catch (error: any) {
-      return error?.message || 'An unexpected error occurred';
+      return 'No user found';
+    } catch (err: any) {
+      return err.errors?.[0]?.message || 'Update failed';
     }
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user, loading, signIn, signInWithGoogle, signUp, resetPassword, updatePassword, signOut }),
-    [session, user, loading]
+    () => ({
+      session: sessionId ? { user: clerkUser } : null,
+      user: clerkUser,
+      loading,
+      supabaseSynced,
+      signIn,
+      signInWithGoogle,
+      signInWithApple,
+      signUp,
+      resetPassword,
+      updatePassword,
+      signOut,
+      refreshProfile,
+      profileVersion
+    }),
+    [sessionId, clerkUser, loading, supabaseSynced, isSignInLoaded, isSignUpLoaded, profileVersion]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
+export const useAuthContext = () => { // Renamed slightly to avoid conflict with Clerk useAuth internally if needed, but exports keep existing name
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
 
-
+// Maintain compatibility with existing imports
+export { useAuthContext as useAuth }; 

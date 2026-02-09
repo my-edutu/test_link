@@ -12,6 +12,7 @@ import {
   Alert,
   FlatList,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import {
@@ -19,14 +20,16 @@ import {
   VideoTrack,
   useTracks,
   useParticipants,
+  useRoomContext,
 } from '@livekit/react-native';
-import { Track } from 'livekit-client';
+import { Track, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useTheme } from '../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { API_BASE_URL } from '../config';
+import { liveService } from '../services/liveService';
+import * as Network from 'expo-network';
 
 const { width, height } = Dimensions.get('window');
 
@@ -99,6 +102,8 @@ const FloatingHearts = ({ count }: { count: number }) => {
   );
 };
 
+const MAX_TOKEN_RETRIES = 3;
+
 const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   const { roomId } = route.params;
   const { user } = useAuth();
@@ -112,40 +117,105 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   const [heartCount, setHeartCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // 1. Fetch Stream Metadata and Token
+  // Connection state management
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [tokenFetchRetries, setTokenFetchRetries] = useState(0);
+
+  // 1. Fetch Stream Metadata and Token with retry mechanism
   useEffect(() => {
-    const setup = async () => {
+    const setup = async (retryAttempt: number = 0) => {
+      setTokenError(null);
+
       try {
-        // Get stream info
-        const { data: stream } = await supabase
+        // Check network connectivity first
+        const netState = await Network.getNetworkStateAsync();
+        if (!netState.isConnected || !netState.isInternetReachable) {
+          throw new Error('NO_NETWORK');
+        }
+
+        // 1. Get stream info (optional metadata)
+        const { data: stream, error: streamError } = await supabase
           .from('live_streams')
           .select('*, profiles:streamer_id(*)')
           .eq('id', roomId)
           .single();
 
+        if (streamError) {
+          console.warn('[LiveViewer] Could not fetch stream metadata:', streamError);
+        }
         setLiveStream(stream);
 
-        // Get token from backend
-        const response = await fetch(`${API_BASE_URL}/live/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomName: roomId,
-            participantName: user?.user_metadata?.username || 'Viewer'
-          })
+        // Check if stream is still live
+        if (stream && stream.is_live === false) {
+          Alert.alert('Stream Ended', 'This stream has already ended.', [
+            { text: 'OK', onPress: () => navigation.goBack() }
+          ]);
+          return;
+        }
+
+        // 2. Get token from liveService
+        const participantName = user?.user_metadata?.username || 'Viewer';
+        console.log('[LiveViewer] Fetching token for room:', roomId, 'attempt:', retryAttempt + 1);
+
+        const { token: newToken, serverUrl: newServerUrl } = await liveService.getJoinToken(roomId, participantName);
+
+        console.log('[LiveViewer] Token received:', {
+          hasToken: !!newToken,
+          serverUrl: newServerUrl
         });
-        const data = await response.json();
-        setToken(data.token);
-        setServerUrl(data.serverUrl);
-      } catch (err) {
-        console.error('Setup error:', err);
+
+        setToken(newToken);
+        setServerUrl(newServerUrl);
+        setTokenError(null);
+        setTokenFetchRetries(0);
+      } catch (err: any) {
+        console.error('[LiveViewer] Setup error:', err);
+
+        // Determine specific error type
+        let errorMessage = 'Could not connect to stream';
+        let shouldRetry = true;
+
+        if (err.message === 'NO_NETWORK') {
+          errorMessage = 'No internet connection. Please check your network.';
+          shouldRetry = false;
+        } else if (err.message?.includes('Authentication required') || err.message?.includes('401')) {
+          errorMessage = 'Session expired. Please log in again.';
+          shouldRetry = false;
+        } else if (err.message?.includes('500') || err.message?.includes('502') || err.message?.includes('503')) {
+          errorMessage = 'Server is temporarily unavailable. Retrying...';
+        } else if (err.message?.includes('Network request failed')) {
+          errorMessage = 'Could not reach server. Checking connection...';
+        }
+
+        setTokenError(errorMessage);
+
+        // Retry logic with exponential backoff
+        if (shouldRetry && retryAttempt < MAX_TOKEN_RETRIES) {
+          const delay = Math.pow(2, retryAttempt) * 1000;
+          console.log(`[LiveViewer] Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${MAX_TOKEN_RETRIES})`);
+          setTokenFetchRetries(retryAttempt + 1);
+          setTimeout(() => setup(retryAttempt + 1), delay);
+        } else if (!shouldRetry || retryAttempt >= MAX_TOKEN_RETRIES) {
+          const finalMessage = shouldRetry
+            ? 'Could not connect after multiple attempts. The stream may be unavailable.'
+            : errorMessage;
+
+          Alert.alert(
+            'Connection Error',
+            finalMessage,
+            [
+              { text: 'Go Back', onPress: () => navigation.goBack(), style: 'cancel' },
+              { text: 'Retry', onPress: () => { setTokenFetchRetries(0); setup(0); } }
+            ]
+          );
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    setup();
-  }, [roomId, user]);
+    setup(0);
+  }, [roomId, user, navigation]);
 
   // 2. Chat Realtime
   useEffect(() => {
@@ -200,7 +270,41 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
   if (loading || !token) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={{ color: 'white' }}>Connecting to stream...</Text>
+        <ActivityIndicator size="large" color="#FF8A00" />
+        <Text style={{ color: 'white', fontSize: 16, marginTop: 16 }}>
+          {tokenError || 'Connecting to stream...'}
+        </Text>
+        {tokenFetchRetries > 0 && !tokenError?.includes('No internet') && (
+          <Text style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
+            Retry attempt {tokenFetchRetries}/{MAX_TOKEN_RETRIES}...
+          </Text>
+        )}
+        {tokenError && (
+          <TouchableOpacity
+            style={{
+              marginTop: 20,
+              backgroundColor: '#FF8A00',
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 25,
+            }}
+            onPress={() => {
+              setTokenError(null);
+              setTokenFetchRetries(0);
+              setLoading(true);
+              setToken(null);
+              setServerUrl(null);
+            }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Retry Connection</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={{ marginTop: 16 }}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={{ color: '#888' }}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -210,11 +314,22 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       <LiveKitRoom
-        serverUrl={serverUrl || "wss://lingualink-rtmp.livekit.cloud"}
+        serverUrl={serverUrl || "wss://lingualink-wrnisht2.livekit.cloud"}
         token={token}
         connect={true}
         audio={true}
         video={true}
+        onConnected={() => console.log('[LiveViewer] Room connected!')}
+        onDisconnected={() => console.log('[LiveViewer] Room disconnected')}
+        onError={(error) => {
+          console.error('[LiveViewer] Room error:', error);
+          const errorMessage = error?.message || 'Unknown error';
+          if (errorMessage.includes('token') || errorMessage.includes('expired')) {
+            Alert.alert('Session Error', 'Your session has expired. Please rejoin the stream.', [
+              { text: 'OK', onPress: () => navigation.goBack() }
+            ]);
+          }
+        }}
       >
         <ViewerContent
           navigation={navigation}
@@ -233,9 +348,94 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
 
 const ViewerContent = ({ navigation, liveStream, heartCount, messages, newComment, setNewComment, sendMessage, setHeartCount }: any) => {
   const participants = useParticipants();
+  const room = useRoomContext();
+
+  // Reconnection state
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+
+  // Monitor room connection state with reconnection handling
+  useEffect(() => {
+    if (!room) return;
+
+    const handleReconnecting = () => {
+      console.log('[LiveViewer] Reconnecting to server...');
+      setIsReconnecting(true);
+      setReconnectAttempt(prev => prev + 1);
+    };
+
+    const handleReconnected = () => {
+      console.log('[LiveViewer] Reconnected successfully!');
+      setIsReconnecting(false);
+      setReconnectAttempt(0);
+    };
+
+    const handleDisconnected = (reason?: DisconnectReason) => {
+      console.log('[LiveViewer] Disconnected, reason:', reason);
+      setIsReconnecting(false);
+
+      let message = 'Disconnected from stream';
+      let shouldGoBack = false;
+
+      switch (reason) {
+        case DisconnectReason.DUPLICATE_IDENTITY:
+          message = 'You joined from another device. This session has ended.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.ROOM_DELETED:
+          message = 'The stream has ended.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.PARTICIPANT_REMOVED:
+          message = 'You have been removed from the stream.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.JOIN_FAILURE:
+          message = 'Failed to join the stream. Please check your connection.';
+          break;
+        case DisconnectReason.CLIENT_INITIATED:
+          return;
+        default:
+          message = 'Connection lost. Please try rejoining.';
+      }
+
+      if (shouldGoBack) {
+        Alert.alert('Stream Ended', message, [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        Alert.alert('Connection Lost', message, [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      }
+    };
+
+    room.on(RoomEvent.Reconnecting, handleReconnecting);
+    room.on(RoomEvent.Reconnected, handleReconnected);
+    room.on(RoomEvent.Disconnected, handleDisconnected);
+
+    return () => {
+      room.off(RoomEvent.Reconnecting, handleReconnecting);
+      room.off(RoomEvent.Reconnected, handleReconnected);
+      room.off(RoomEvent.Disconnected, handleDisconnected);
+    };
+  }, [room, navigation]);
 
   return (
     <View style={StyleSheet.absoluteFill}>
+      {/* Reconnecting Overlay */}
+      {isReconnecting && (
+        <View style={styles.reconnectingOverlay}>
+          <View style={styles.reconnectingBox}>
+            <ActivityIndicator size="large" color="#FF8A00" />
+            <Text style={styles.reconnectingText}>Reconnecting...</Text>
+            <Text style={styles.reconnectingSubtext}>
+              Attempt {reconnectAttempt}
+            </Text>
+          </View>
+        </View>
+      )}
+
       <RemoteVideoView />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
@@ -345,7 +545,32 @@ const styles = StyleSheet.create({
   heartBtn: {
     width: 50, height: 50, borderRadius: 25,
     backgroundColor: '#FF416C', justifyContent: 'center', alignItems: 'center'
-  }
+  },
+  reconnectingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  reconnectingBox: {
+    backgroundColor: 'rgba(30, 30, 30, 0.95)',
+    padding: 30,
+    borderRadius: 16,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  reconnectingText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+  },
+  reconnectingSubtext: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 8,
+  },
 });
 
 export default LiveViewerScreen;

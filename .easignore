@@ -1,59 +1,144 @@
 # EAS upload ignore rules
 # Keep only what's needed to build on EAS.
 
-# Node & package managers
-node_modules
+# ============================================
+# BACKEND & ADMIN - NOT NEEDED FOR MOBILE BUILD
+# ============================================
+# NestJS backend (has its own node_modules ~100MB+)
+/services/
+
+# Next.js admin portal (has its own node_modules ~80MB+)
+admin-web-portal/
+
+# Admin directory
+/admin/
+
+# Supabase edge functions (deployed separately)
+/supabase/
+
+# ============================================
+# DOCUMENTATION - NOT NEEDED FOR BUILD
+# ============================================
+docs/
+design_audit/
+*.md
+!README.md
+
+# ============================================
+# TESTS - NOT NEEDED FOR BUILD
+# ============================================
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+jest.config.js
+jest.setup.js
+
+# ============================================
+# IDE & AGENT FOLDERS
+# ============================================
+.Agent/
+.Agents/
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# ============================================
+# NODE & PACKAGE MANAGERS
+# ============================================
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-store
+.pnpm-store/
 
-# Expo caches
-.expo
-.expo-shared
+# ============================================
+# EXPO CACHES
+# ============================================
+.expo/
+.expo-shared/
 
-# OS/editor junk
+# ============================================
+# OS/EDITOR JUNK
+# ============================================
 .DS_Store
 Thumbs.db
 *.iml
 *.log
-.vscode
-.idea
 
-# Generic build outputs
-build
-/dist
-web/build
-coverage
-.tmp
-tmp
-temp
+# ============================================
+# BUILD OUTPUTS
+# ============================================
+build/
+dist/
+web/build/
+coverage/
+.tmp/
+tmp/
+temp/
 
-# Android local/derived files
-android/.gradle
-android/build
-android/app/build
-android/app/generated
+# ============================================
+# ANDROID LOCAL/DERIVED FILES
+# ============================================
+android/.gradle/
+android/build/
+android/app/build/
+android/app/generated/
 android/app/debug.keystore
-android/app/src/debug
-android/app/src/androidTest
+# NOTE: Do NOT exclude android/app/src/debug/ - it contains the debug
+# AndroidManifest.xml needed for dev client builds (cleartext traffic, etc.)
+android/app/src/androidTest/
 
-# iOS local/derived files (if present)
-ios/build
-ios/Pods
-ios/*.xcodeproj/project.xcworkspace
-ios/*.xcworkspace/xcuserdata
-ios/*.xcodeproj/xcuserdata
+# ============================================
+# iOS LOCAL/DERIVED FILES
+# ============================================
+ios/build/
+ios/Pods/
+ios/*.xcodeproj/project.xcworkspace/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
 
-# Git data
-.git
+# ============================================
+# GIT DATA
+# ============================================
+.git/
 
-# Large binaries & artifacts
+# ============================================
+# LARGE BINARIES & ARTIFACTS
+# ============================================
 *.apk
 *.aab
 *.ipa
 *.dSYM
+*.zip
+*.tar.gz
 
-# Secrets/keystores (use EAS credentials service)
+# ============================================
+# SECRETS/KEYSTORES
+# ============================================
 *.keystore
 *.jks
+.env.local
+services/**/.env
+
+# ============================================
+# EMAILS & MISC
+# ============================================
+emails/
+web/
+types/
+
+# ============================================
+# FORCE INCLUDE (override ignores)
+# ============================================
+!google-services.json
+!app.json
+!eas.json
+!babel.config.js
+!metro.config.js
+!tsconfig.json
+!index.ts
+!package.json
+!package-lock.json

@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-01-25] - Database Schema Synchronization
+
+### Changed
+- Synchronized Supabase database with NestJS Drizzle schema (`schema.ts`).
+- Added missing columns to `profiles` table (financial, ambassador, push token).
+- Standardized documentation in `BACKEND_STATUS.md`.
+
+### Added
+- Created `FUTURE_GUIDE.md` for backend development guidelines.
+- Created `reports` table for content moderation.
+- Created `referral_stats`, `reward_rates`, `transactions` tables.
+- Created `notification_logs`, `clip_flags` tables.
+- Created `withdrawals`, `payout_requests` tables.
+
+### Migration Required
+- [x] Yes
+- Files: 
+  - `supabase/reports.sql`
+  - Inline migrations (financial & system tables) applied via MCP.
+
+---
+
 ## [2026-01-21] - Monetization Module (Initial)
 
 ### Added

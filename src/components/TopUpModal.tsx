@@ -43,7 +43,6 @@ const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) 
         setLoading(true);
         try {
             const result = await monetizationApi.initializeTopUp(
-                user.id,
                 amountNum,
                 user.email || 'user@example.com' // Fallback if email is missing (should be there)
             );

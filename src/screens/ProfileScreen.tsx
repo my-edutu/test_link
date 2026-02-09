@@ -844,12 +844,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={[styles.sectionHeaderTitle, { color: userTheme.text }]}>Earnings & Transactions</Text>
               <View style={{ padding: 16 }}>
                 <EarningsCard
-                  onTopUp={() => setShowTopUpModal(true)}
+                  userId={userProfile?.id || ''}
+                  onTopUpPress={() => setShowTopUpModal(true)}
                 />
                 <View style={{ height: 20 }} />
-                <PendingRewards />
+                <PendingRewards userId={userProfile?.id || ''} />
                 <View style={{ height: 20 }} />
-                <TransactionHistory />
+                <TransactionHistory userId={userProfile?.id || ''} />
               </View>
             </View>
           </View>

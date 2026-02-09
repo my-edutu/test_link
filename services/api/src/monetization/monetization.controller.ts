@@ -22,6 +22,8 @@ import { SubmitValidationDto, ValidationResponseDto } from './dto/validation.dto
 import { FlagClipDto } from './dto/flag.dto';
 import { JwtAuthGuard, AdminGuard, CurrentUser, Public, AuthUser } from '../auth';
 
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
+
 /**
  * Monetization Controller
  * Handles all monetary/validation-related endpoints.
@@ -29,6 +31,8 @@ import { JwtAuthGuard, AdminGuard, CurrentUser, Public, AuthUser } from '../auth
  * All endpoints are protected by JWT authentication.
  * Admin endpoints additionally require the AdminGuard.
  */
+@ApiTags('Monetization')
+@ApiBearerAuth()
 @Controller('monetization')
 @UseGuards(JwtAuthGuard) // Apply JWT auth to all endpoints in this controller
 export class MonetizationController {
@@ -49,6 +53,8 @@ export class MonetizationController {
     @Post('validate')
     @HttpCode(HttpStatus.OK)
     @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 per minute
+    @ApiOperation({ summary: 'Submit a validation for a voice clip' })
+    @ApiResponse({ status: 200, description: 'Validation submitted successfully', type: ValidationResponseDto })
     async submitValidation(
         @Body() dto: SubmitValidationDto,
         @CurrentUser() user: AuthUser,
@@ -63,6 +69,8 @@ export class MonetizationController {
      */
     @Post('flag')
     @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Flag a clip for admin review' })
+    @ApiResponse({ status: 200, description: 'Clip flagged successfully' })
     async flagClip(
         @Body() dto: FlagClipDto,
         @CurrentUser() user: AuthUser,
@@ -77,6 +85,8 @@ export class MonetizationController {
      */
     @Post('remix')
     @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Register a remix/duet clip' })
+    @ApiResponse({ status: 201, description: 'Remix created successfully' })
     async createRemix(
         @Body() dto: CreateRemixDto,
         @CurrentUser() user: AuthUser,
@@ -90,6 +100,7 @@ export class MonetizationController {
      * GET /monetization/remix/:clipId/chain
      */
     @Get('remix/:clipId/chain')
+    @ApiOperation({ summary: 'Get remix ancestry chain' })
     async getRemixChain(
         @Param('clipId') clipId: string,
         @CurrentUser() user: AuthUser,
@@ -102,6 +113,7 @@ export class MonetizationController {
      * GET /monetization/remix/:clipId/children
      */
     @Get('remix/:clipId/children')
+    @ApiOperation({ summary: 'Get all remixes of a clip' })
     async getRemixesOf(
         @Param('clipId') clipId: string,
         @CurrentUser() user: AuthUser,
@@ -114,6 +126,7 @@ export class MonetizationController {
      * GET /monetization/remix/stats
      */
     @Get('remix/stats')
+    @ApiOperation({ summary: 'Get user remix statistics' })
     async getRemixStats(@CurrentUser() user: AuthUser) {
         return this.remixService.getUserRemixStats(user.id);
     }
@@ -123,6 +136,8 @@ export class MonetizationController {
      * GET /monetization/queue
      */
     @Get('queue')
+    @ApiOperation({ summary: 'Get validation queue for current user' })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
     async getValidationQueue(
         @CurrentUser() user: AuthUser,
         @Query('limit') limit?: number,
@@ -136,6 +151,8 @@ export class MonetizationController {
      * GET /monetization/history
      */
     @Get('history')
+    @ApiOperation({ summary: 'Get validation history for current user' })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
     async getValidationHistory(
         @CurrentUser() user: AuthUser,
         @Query('limit') limit?: number,
@@ -149,6 +166,7 @@ export class MonetizationController {
      * GET /monetization/earnings
      */
     @Get('earnings')
+    @ApiOperation({ summary: 'Get user earnings summary' })
     async getEarnings(@CurrentUser() user: AuthUser) {
         const profile = await this.db
             .select({
@@ -189,6 +207,7 @@ export class MonetizationController {
      */
     @Get('admin/flags')
     @UseGuards(AdminGuard)
+    @ApiOperation({ summary: 'Get pending flags (Admin only)' })
     async getPendingFlags(
         @CurrentUser() user: AuthUser,
         @Query('limit') limit?: number,
@@ -206,6 +225,7 @@ export class MonetizationController {
     @Post('admin/flags/:flagId/resolve')
     @HttpCode(HttpStatus.OK)
     @UseGuards(AdminGuard)
+    @ApiOperation({ summary: 'Resolve a flag (Admin only)' })
     async resolveFlag(
         @Param('flagId') flagId: string,
         @CurrentUser() user: AuthUser,
@@ -226,6 +246,7 @@ export class MonetizationController {
      */
     @Get('health')
     @Public()
+    @ApiOperation({ summary: 'Health check' })
     healthCheck() {
         return { status: 'ok', module: 'monetization', timestamp: new Date().toISOString() };
     }

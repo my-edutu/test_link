@@ -180,8 +180,9 @@ export class DeepLinkHandler {
    * Create a deep link URL for sharing
    */
   createDeepLink(screen: string, params?: Record<string, any>): string {
-    // Use Expo Go compatible URL format
-    const baseUrl = 'exp://localhost:8081/--/';
+    // Use dynamic scheme from app config or fallback to a production-safe scheme
+    const scheme = Constants.expoConfig?.scheme || 'lingualink';
+    const baseUrl = `${scheme}://`;
     const queryString = params ? `?${new URLSearchParams(params).toString()}` : '';
     return `${baseUrl}${screen}${queryString}`;
   }

@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -32,7 +32,11 @@ interface Props {
     onClose: () => void;
 }
 
+import CertificateModal from './CertificateModal';
+
 const BadgeDetailModal: React.FC<Props> = ({ visible, badge, onClose }) => {
+    const [showCertificate, setShowCertificate] = React.useState(false);
+
     if (!badge) return null;
 
     const handleShare = async () => {
@@ -112,14 +116,20 @@ const BadgeDetailModal: React.FC<Props> = ({ visible, badge, onClose }) => {
                                 <Ionicons name="share-social" size={20} color="#FFF" />
                                 <Text style={styles.actionText}>Share</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={handleDownload}>
-                                <Ionicons name="download-outline" size={20} color="#FFF" />
-                                <Text style={styles.actionText}>Save Certificate</Text>
+                            <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={() => setShowCertificate(true)}>
+                                <Ionicons name="document-text-outline" size={20} color="#FFF" />
+                                <Text style={styles.actionText}>View Certificate</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </View>
+
+            <CertificateModal
+                visible={showCertificate}
+                badge={badge}
+                onClose={() => setShowCertificate(false)}
+            />
         </Modal>
     );
 };

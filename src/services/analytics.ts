@@ -1,35 +1,26 @@
 // src/services/analytics.ts
 // PostHog Analytics service for tracking user events and identification
 
-import PostHog from 'posthog-react-native';
+import { usePostHog, PostHog } from 'posthog-react-native';
 
 let posthogClient: PostHog | null = null;
+
+export function setPostHogClient(client: PostHog) {
+  posthogClient = client;
+  console.log('[Analytics] PostHog client set externally');
+}
 
 /**
  * Initialize PostHog analytics
  * Should be called once at app startup
+ * Note: PostHog is initialized via PostHogProvider in App.tsx
  */
 export async function initAnalytics(apiKey: string, host?: string): Promise<PostHog | null> {
   if (posthogClient) {
     return posthogClient;
   }
-
-  try {
-    posthogClient = await PostHog.initAsync(apiKey, {
-      host: host || 'https://app.posthog.com',
-      captureApplicationLifecycleEvents: true,
-      captureDeepLinks: true,
-      recordScreenViews: true,
-      flushAt: 20,
-      flushInterval: 30000, // 30 seconds
-    });
-
-    console.log('[Analytics] PostHog initialized successfully');
-    return posthogClient;
-  } catch (error) {
-    console.error('[Analytics] Failed to initialize PostHog:', error);
-    return null;
-  }
+  // Deprecated: initialization should happen in App.tsx and passed via setPostHogClient
+  return null;
 }
 
 /**

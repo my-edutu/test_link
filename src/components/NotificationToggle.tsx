@@ -1,5 +1,7 @@
 import React from 'react';
 import { View, Text, Switch, StyleSheet } from 'react-native';
+import { Typography } from '../constants/Theme';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   title: string;
@@ -9,16 +11,21 @@ type Props = {
 };
 
 const NotificationToggle: React.FC<Props> = ({ title, subtitle, value, onChange }) => {
+  const { colors, isDark } = useTheme();
+
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { borderBottomColor: colors.borderLight || 'rgba(255, 255, 255, 0.05)' }]}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+        {subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text> : null}
       </View>
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: '#D1D5DB', true: '#FF8A00' }}
+        trackColor={{
+          false: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          true: colors.primary
+        }}
         thumbColor="#FFFFFF"
       />
     </View>
@@ -31,12 +38,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
-  title: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
-  subtitle: { fontSize: 14, color: '#6B7280', lineHeight: 18 },
+  title: {
+    ...Typography.body,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  subtitle: {
+    ...Typography.body,
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
 });
 
 export default NotificationToggle;

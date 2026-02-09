@@ -3,11 +3,29 @@ import { eq } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../../database/schema';
 
-export interface CreateRemixDto {
+import { IsString, IsOptional, IsUUID, IsUrl } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export class CreateRemixDto {
+    @ApiProperty({ description: 'UUID of the parent clip being remixed' })
+    @IsUUID()
     parentClipId: string;
+
+    @ApiProperty({ description: 'The spoken phrase' })
+    @IsString()
     phrase: string;
+
+    @ApiProperty({ description: 'Language code (e.g., en-US)' })
+    @IsString()
     language: string;
+
+    @ApiPropertyOptional({ description: 'Dialect or accent' })
+    @IsOptional()
+    @IsString()
     dialect?: string;
+
+    @ApiProperty({ description: 'URL of the recorded audio' })
+    @IsUrl()
     audioUrl: string;
 }
 

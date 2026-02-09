@@ -2,12 +2,17 @@
 // Utility to check if native modules are available (development build vs Expo Go)
 
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
  * Check if we're running in Expo Go (managed workflow without native modules)
- * Returns true if we're in Expo Go, false if we're in a development build
+ * Returns true if we're in Expo Go or on web, false if we're in a development build
  */
 export const isExpoGo = (): boolean => {
+    // Web doesn't support native modules
+    if (Platform.OS === 'web') {
+        return true;
+    }
     return Constants.appOwnership === 'expo';
 };
 

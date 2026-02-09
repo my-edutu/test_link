@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { NewtonCradleLoader } from '../components/NewtonCradleLoader';
 import {
     View,
     Text,
@@ -14,46 +15,27 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { monetizationApi } from '../services/monetizationApi';
-
-interface Bank {
-    name: string;
-    code: string;
-    slug: string;
-}
-
-interface LinkedBank {
-    bankName: string | null;
-    bankCode: string | null;
-    accountNumberLast4: string | null;
-    accountName: string | null;
-}
-
-interface BalanceSummary {
-    availableBalance: number;
-    pendingBalance: number;
-    totalBalance: number;
-}
-
-interface ResolvedAccount {
-    accountNumber: string;
-    accountName: string;
-    bankCode: string;
-    bankName: string;
-}
+import {
+    BankItem,
+    LinkedBank,
+    BalanceSummary,
+    BankResolveResult
+} from '../types/monetization.types';
 
 const WithdrawalScreen: React.FC = () => {
     const navigation = useNavigation();
 
     // State
-    const [banks, setBanks] = useState<Bank[]>([]);
+    const [banks, setBanks] = useState<BankItem[]>([]);
     const [linkedBank, setLinkedBank] = useState<LinkedBank | null>(null);
     const [balance, setBalance] = useState<BalanceSummary | null>(null);
-    const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
+    const [selectedBank, setSelectedBank] = useState<BankItem | null>(null);
     const [accountNumber, setAccountNumber] = useState('');
     const [amount, setAmount] = useState('');
-    const [resolvedAccount, setResolvedAccount] = useState<ResolvedAccount | null>(null);
+    const [resolvedAccount, setResolvedAccount] = useState<BankResolveResult | null>(null);
 
     // Loading states
     const [loadingBanks, setLoadingBanks] = useState(true);
@@ -238,7 +220,10 @@ const WithdrawalScreen: React.FC = () => {
                     styles.primaryButton,
                     (!selectedBank || accountNumber.length !== 10) && styles.buttonDisabled,
                 ]}
-                onPress={resolveAccount}
+                onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    resolveAccount();
+                }}
                 disabled={!selectedBank || accountNumber.length !== 10 || resolving}
             >
                 {resolving ? (
@@ -295,8 +280,6 @@ const WithdrawalScreen: React.FC = () => {
                 />
             </View>
 
-            <Text style={styles.minWithdrawal}>Minimum withdrawal: $5.00</Text>
-
             <View style={styles.buttonRow}>
                 <TouchableOpacity
                     style={styles.secondaryButton}
@@ -310,7 +293,10 @@ const WithdrawalScreen: React.FC = () => {
                         styles.flexButton,
                         (!amount || parseFloat(amount) < 5) && styles.buttonDisabled,
                     ]}
-                    onPress={handleAmountSubmit}
+                    onPress={() => {
+                        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        handleAmountSubmit();
+                    }}
                     disabled={!amount || parseFloat(amount) < 5}
                 >
                     <Text style={styles.primaryButtonText}>Continue</Text>
@@ -322,6 +308,7 @@ const WithdrawalScreen: React.FC = () => {
     const renderConfirmStep = () => (
         <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Confirm Withdrawal</Text>
+            <Text style={styles.minWithdrawal}>Minimum withdrawal: $5.00</Text>
 
             <View style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
@@ -348,8 +335,8 @@ const WithdrawalScreen: React.FC = () => {
             </View>
 
             <Text style={styles.disclaimer}>
-                By confirming, your funds will be locked and sent to the account above.
-                Processing may take 1-3 business days.
+                By confirming, your funds will be sent to the account above.
+                Payment comes in 24 hours (1 working day).
             </Text>
 
             <View style={styles.buttonRow}>
@@ -384,9 +371,9 @@ const WithdrawalScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
                 <ScrollView style={styles.bankList}>
-                    {banks.map((bank) => (
+                    {banks.map((bank, index) => (
                         <TouchableOpacity
-                            key={bank.code}
+                            key={`${bank.code}-${index}`}
                             style={styles.bankItem}
                             onPress={() => {
                                 setSelectedBank(bank);
@@ -408,7 +395,7 @@ const WithdrawalScreen: React.FC = () => {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#FF8A00" />
+                    <NewtonCradleLoader />
                 </View>
             </SafeAreaView>
         );
@@ -420,12 +407,11 @@ const WithdrawalScreen: React.FC = () => {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.keyboardAvoid}
             >
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                <View style={[styles.header, { paddingTop: 10 }]}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                         <Ionicons name="arrow-back" size={24} color="#1F2937" />
+                        <Text style={styles.headerTitle}>Withdraw Funds</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Withdraw Funds</Text>
-                    <View style={{ width: 24 }} />
                 </View>
 
                 <ScrollView
@@ -468,19 +454,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingVertical: 12,
         backgroundColor: '#FFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
+    },
+    backButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     headerTitle: {
-        fontSize: 18,
-        fontWeight: '600',
+        fontSize: 22,
+        fontWeight: '800',
         color: '#1F2937',
+        marginLeft: 12,
     },
     content: {
         flex: 1,

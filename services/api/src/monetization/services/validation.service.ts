@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ne, notExists, notInArray, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../../database/schema';
 import { SubmitValidationDto, ValidationResponseDto } from '../dto/validation.dto';
@@ -70,14 +70,22 @@ export class ValidationService {
             throw new BadRequestException(MONETIZATION_ERRORS.ALREADY_VALIDATED);
         }
 
-        // 5. Check trust score eligibility
-        const profile = await this.db
-            .select({ trustScore: schema.profiles.trustScore })
+        // 5. Check trust score eligibility and fetch stats
+        const [profile] = await this.db
+            .select({
+                id: schema.profiles.id,
+                trustScore: schema.profiles.trustScore,
+                dailyCount: schema.profiles.dailyValidationsCount,
+                lastReset: schema.profiles.lastValidationReset,
+                totalCount: schema.profiles.totalValidationsCount,
+                activeDays: schema.profiles.activeDaysCount,
+                lastActive: schema.profiles.lastActiveDate
+            })
             .from(schema.profiles)
             .where(eq(schema.profiles.id, validatorId))
             .limit(1);
 
-        if (profile.length > 0 && (profile[0].trustScore ?? 100) <= TRUST_SCORE_MIN) {
+        if (profile && (profile.trustScore ?? 100) <= TRUST_SCORE_MIN) {
             throw new ForbiddenException(MONETIZATION_ERRORS.INSUFFICIENT_TRUST);
         }
 
@@ -85,20 +93,49 @@ export class ValidationService {
         const [insertedValidation] = await this.db
             .insert(schema.validations)
             .values({
-                voiceClipId,
-                validatorId,
-                isApproved,
+                voiceClipId: voiceClipId,
+                validatorId: validatorId,
+                isApproved: isApproved, // Ensure this maps correctly to schema boolean or text
             })
             .returning({ id: schema.validations.id });
 
-        // 7. Update rate limiter
+        // 7. Update rate limiter and User Stats
         this.lastValidationTime.set(validatorId, Date.now());
+
+        // Update User Progression Stats
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        let newDailyCount = (profile?.dailyCount || 0) + 1;
+        let newActiveDays = profile?.activeDays || 0;
+        let newLastActive = profile?.lastActive ? new Date(profile.lastActive) : null;
+
+        // Check for daily reset
+        if (!profile?.lastReset || new Date(profile.lastReset) < startOfToday) {
+            newDailyCount = 1;
+        }
+
+        // Check for active day increment
+        if (!newLastActive || newLastActive < startOfToday) {
+            newActiveDays = (profile?.activeDays || 0) + 1;
+            newLastActive = now;
+        }
+
+        await this.db.update(schema.profiles)
+            .set({
+                dailyValidationsCount: newDailyCount,
+                lastValidationReset: now,
+                totalValidationsCount: (profile?.totalCount || 0) + 1,
+                activeDaysCount: newActiveDays,
+                lastActiveDate: newLastActive
+            })
+            .where(eq(schema.profiles.id, validatorId));
 
         // 8. Increment validations_count on the clip
         await this.db
             .update(schema.voiceClips)
             .set({
-                validationsCount: (clip[0].validationsCount ?? 0) + 1,
+                validationsCount: sql`${schema.voiceClips.validationsCount} + 1`,
             })
             .where(eq(schema.voiceClips.id, voiceClipId));
 
@@ -135,19 +172,31 @@ export class ValidationService {
      * Returns clips ordered by least validation count first.
      */
     async getValidationQueue(userId: string, limit: number = 10) {
-        // This is a simplified version. In production, use a proper query
-        // that excludes user's own clips AND already validated clips.
-        const clips = await this.db
+        // 1. Get already validated IDs for this user
+        const alreadyValidated = await this.db
+            .select({ id: schema.validations.voiceClipId })
+            .from(schema.validations)
+            .where(eq(schema.validations.validatorId, userId));
+
+        const validatedIds = alreadyValidated.map(v => v.id);
+
+        // 2. Fetch pending clips from OTHER users
+        let query = this.db
             .select()
             .from(schema.voiceClips)
-            .where(and(
-                // Not own clips
-                // Status pending
-            ))
+            .where(
+                and(
+                    eq(schema.voiceClips.status, 'pending'),
+                    ne(schema.voiceClips.userId, userId),
+                    validatedIds.length > 0
+                        ? notInArray(schema.voiceClips.id, validatedIds)
+                        : sql`TRUE`
+                )
+            )
             .orderBy(schema.voiceClips.validationsCount)
             .limit(limit);
 
-        return clips;
+        return query;
     }
 
     /**

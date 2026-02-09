@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Lingualink AI",
-    "slug": "lingualink",
+    "slug": "lingualink-ai-nbxjn3",
     "version": "1.0.0",
     "scheme": "lingualink",
     "orientation": "portrait",
@@ -11,8 +11,12 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FF8A00"
+      "backgroundColor": "#FFFFFF"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 30000
+    },
+    "runtimeVersion": "1.0.0",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -43,8 +47,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FF8A00"
       },
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#FFFFFF"
+      },
       "edgeToEdgeEnabled": true,
-      "package": "com.bernard.o.LinguaLink",
+      "package": "com.lingualink.com",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -61,17 +70,31 @@
         }
       ],
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": false,
+            "enableMinifyInReleaseBuilds": true
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "@livekit/react-native-expo-plugin",
       [
         "expo-audio",
         {
@@ -93,15 +116,16 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset",
+      "expo-localization"
     ],
     "extra": {
       "eas": {
-        "projectId": "dff9497b-b8cb-4001-8fe8-147af06384fa"
-      },
-      "EXPO_PUBLIC_SUPABASE_URL": "https://yeaurbjtntkwbbqwjutm.supabase.co",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllYXVyYmp0bnRrd2JicXdqdXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2ODA1MDksImV4cCI6MjA3MTI1NjUwOX0.YdP_tWexuqvJocnVg8RzkHuT24KEMLsKx6AwzipJXtY"
-    },
-    "owner": "devbyte"
+        "projectId": "f34d2fe0-a211-450e-a84b-1a9b64765391"
+      }
+    }
   }
 }

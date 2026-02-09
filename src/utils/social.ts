@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getOptionalCurrentUserId } from '../services/authFetch';
 
 export interface FollowerCounts {
   followers_count: number;
@@ -30,7 +31,7 @@ export interface FollowRelationship {
  */
 export const followUser = async (userId: string): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
     const { error } = await supabase
@@ -60,10 +61,12 @@ export const followUser = async (userId: string): Promise<boolean> => {
  */
 export const unfollowUser = async (userId: string): Promise<boolean> => {
   try {
+    const currentUserId = getOptionalCurrentUserId();
+    if (!currentUserId) return false;
     const { error } = await supabase
       .from('followers')
       .delete()
-      .eq('follower_id', (await supabase.auth.getUser()).data.user?.id)
+      .eq('follower_id', currentUserId)
       .eq('following_id', userId);
 
     if (error) {
@@ -85,10 +88,12 @@ export const unfollowUser = async (userId: string): Promise<boolean> => {
  */
 export const isFollowingUser = async (userId: string): Promise<boolean> => {
   try {
+    const currentUserId = getOptionalCurrentUserId();
+    if (!currentUserId) return false;
     const { data, error } = await supabase
       .from('followers')
       .select('id')
-      .eq('follower_id', (await supabase.auth.getUser()).data.user?.id)
+      .eq('follower_id', currentUserId)
       .eq('following_id', userId)
       .single();
 
@@ -213,7 +218,7 @@ export const getFollowers = async (userId: string): Promise<UserProfile[]> => {
  */
 export const getSuggestedUsers = async (limit: number = 10): Promise<UserProfile[]> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return [];
 
     // Get users that the current user is not following

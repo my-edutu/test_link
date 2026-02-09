@@ -15,6 +15,7 @@ import { Colors, Layout, Typography, Gradients } from '../constants/Theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassCard } from '../components/GlassCard';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme } from '../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabaseClient';
@@ -37,6 +38,7 @@ interface Transaction {
 const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const [currentUserPoints, setCurrentUserPoints] = useState(0);
   const [totalEarned, setTotalEarned] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -111,7 +113,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   }, [user?.id, fetchWalletData]);
 
   const renderTransaction = (transaction: Transaction) => (
-    <GlassCard key={transaction.id} style={styles.transactionCard} intensity={15}>
+    <GlassCard key={transaction.id} style={styles.transactionCard} intensity={isDark ? 15 : 60}>
       <View style={[
         styles.transactionIcon,
         { backgroundColor: transaction.amount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }
@@ -123,8 +125,8 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
       <View style={styles.transactionInfo}>
-        <Text style={styles.transactionDescription}>{transaction.description}</Text>
-        <Text style={styles.transactionDate}>{transaction.date}</Text>
+        <Text style={[styles.transactionDescription, { color: colors.text }]}>{transaction.description}</Text>
+        <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>{transaction.date}</Text>
       </View>
       <Text style={[
         styles.transactionAmount,
@@ -136,26 +138,26 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+      {isDark && <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />}
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Wallet</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Wallet</Text>
           <View style={{ width: 40 }} />
         </View>
 
         {/* User Points Card */}
-        <GlassCard intensity={30} style={styles.userPointsCard}>
+        <GlassCard intensity={isDark ? 30 : 80} style={styles.userPointsCard}>
           <View style={styles.pointsMainSection}>
-            <Text style={styles.pointsBalanceLabel}>Available Balance</Text>
-            <Text style={styles.pointsValue}>${currentUserPoints.toLocaleString()}</Text>
-            <Text style={styles.pointsSubtext}>USD</Text>
+            <Text style={[styles.pointsBalanceLabel, { color: colors.textSecondary }]}>Available Balance</Text>
+            <Text style={[styles.pointsValue, { color: colors.primary }]}>${currentUserPoints.toLocaleString()}</Text>
+            <Text style={[styles.pointsSubtext, { color: colors.text }]}>USD</Text>
           </View>
 
           <View style={styles.quickActions}>
@@ -180,17 +182,23 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.walletSection}>
           {/* Wallet Stats Cards */}
           <View style={styles.walletStatsGrid}>
-            <View style={styles.walletStatCard}>
+            <View style={[
+              styles.walletStatCard,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)',
+                borderColor: colors.borderLight
+              }
+            ]}>
               <Ionicons name="trending-up" size={24} color="#10B981" />
-              <Text style={styles.walletStatValue}>${totalEarned.toLocaleString()}</Text>
-              <Text style={styles.walletStatLabel}>Total Earned</Text>
+              <Text style={[styles.walletStatValue, { color: colors.text }]}>${totalEarned.toLocaleString()}</Text>
+              <Text style={[styles.walletStatLabel, { color: colors.textSecondary }]}>Total Earned</Text>
             </View>
           </View>
 
           {/* Recent Transactions */}
           <View style={styles.transactionsSection}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
               <TouchableOpacity>
                 <Text style={styles.seeAllText}>See All</Text>
               </TouchableOpacity>
@@ -198,7 +206,7 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
             {transactions.length > 0 ? (
               transactions.map(renderTransaction)
             ) : (
-              <Text style={{ textAlign: 'center', color: '#6B7280', marginVertical: 20 }}>
+              <Text style={{ textAlign: 'center', color: colors.textSecondary, marginVertical: 20 }}>
                 No transactions yet. Start validating to earn!
               </Text>
             )}
@@ -206,22 +214,34 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Earning Opportunities */}
           <View style={styles.earningSection}>
-            <Text style={styles.sectionTitle}>Earn More Points</Text>
-            <View style={styles.earningCard}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Earn More Points</Text>
+            <View style={[
+              styles.earningCard,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)',
+                borderColor: colors.borderLight
+              }
+            ]}>
               <Ionicons name="mic" size={24} color="#FF8A00" />
               <View style={styles.earningInfo}>
-                <Text style={styles.earningTitle}>Record Voice Clips</Text>
-                <Text style={styles.earningDescription}>Earn {validationReward} points per validated clip</Text>
+                <Text style={[styles.earningTitle, { color: colors.text }]}>Record Voice Clips</Text>
+                <Text style={[styles.earningDescription, { color: colors.textSecondary }]}>Earn {validationReward} points per validated clip</Text>
               </View>
               <TouchableOpacity style={styles.earningButton} onPress={() => navigation.navigate('RecordVoice')}>
                 <Text style={styles.earningButtonText}>Start</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.earningCard}>
+            <View style={[
+              styles.earningCard,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)',
+                borderColor: colors.borderLight
+              }
+            ]}>
               <Ionicons name="checkmark-circle" size={24} color="#10B981" />
               <View style={styles.earningInfo}>
-                <Text style={styles.earningTitle}>Validate Recordings</Text>
-                <Text style={styles.earningDescription}>Earn 10 points per validation</Text>
+                <Text style={[styles.earningTitle, { color: colors.text }]}>Validate Recordings</Text>
+                <Text style={[styles.earningDescription, { color: colors.textSecondary }]}>Earn 10 points per validation</Text>
               </View>
               <TouchableOpacity style={styles.earningButton} onPress={() => navigation.navigate('Validation')}>
                 <Text style={styles.earningButtonText}>Start</Text>
@@ -237,7 +257,6 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A0800',
   },
   header: {
     paddingBottom: 20,
@@ -253,13 +272,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
     ...Typography.h2,
-    color: '#FFFFFF',
   },
   userPointsCard: {
     padding: 24,
@@ -271,18 +288,15 @@ const styles = StyleSheet.create({
   },
   pointsBalanceLabel: {
     ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.6)',
     marginBottom: 8,
   },
   pointsValue: {
     ...Typography.hero,
-    color: Colors.primary,
     fontSize: 42,
   },
   pointsSubtext: {
     ...Typography.body,
     fontWeight: '700',
-    color: '#FFFFFF',
     marginTop: 4,
     opacity: 0.8,
   },
@@ -317,21 +331,17 @@ const styles = StyleSheet.create({
   },
   walletStatCard: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   walletStatValue: {
     ...Typography.h3,
-    color: '#FFFFFF',
     marginVertical: 4,
   },
   walletStatLabel: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
   },
   transactionsSection: {
     marginBottom: 24,
@@ -344,7 +354,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.h3,
-    color: '#FFFFFF',
   },
   seeAllText: {
     color: Colors.primary,
@@ -371,12 +380,10 @@ const styles = StyleSheet.create({
   transactionDescription: {
     ...Typography.body,
     fontWeight: '600',
-    color: '#FFFFFF',
     marginBottom: 2,
   },
   transactionDate: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
   },
   transactionAmount: {
     ...Typography.body,
@@ -389,11 +396,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   earningInfo: {
     flex: 1,
@@ -402,12 +407,10 @@ const styles = StyleSheet.create({
   earningTitle: {
     ...Typography.body,
     fontWeight: '600',
-    color: '#FFFFFF',
     marginBottom: 2,
   },
   earningDescription: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
   },
   earningButton: {
     paddingVertical: 6,

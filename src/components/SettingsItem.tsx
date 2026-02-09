@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '../constants/Theme';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   title: string;
@@ -11,13 +13,19 @@ type Props = {
 };
 
 const SettingsItem: React.FC<Props> = ({ title, subtitle, onPress, showArrow = true, rightContent }) => {
+  const { colors, isDark } = useTheme();
+
   return (
-    <TouchableOpacity style={styles.settingsItem} onPress={onPress} disabled={!onPress}>
+    <TouchableOpacity
+      style={[styles.settingsItem, { borderBottomColor: colors.borderLight || 'rgba(255, 255, 255, 0.05)' }]}
+      onPress={onPress}
+      disabled={!onPress}
+    >
       <View style={styles.settingsItemContent}>
-        <Text style={styles.settingsItemTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.settingsItemSubtitle}>{subtitle}</Text> : null}
+        <Text style={[styles.settingsItemTitle, { color: colors.text }]}>{title}</Text>
+        {subtitle ? <Text style={[styles.settingsItemSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text> : null}
       </View>
-      {rightContent || (showArrow && onPress ? <Ionicons name="chevron-forward" size={20} color="#9CA3AF" /> : null)}
+      {rightContent || (showArrow && onPress ? <Ionicons name="chevron-forward" size={18} color={isDark ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.3)"} /> : null)}
     </TouchableOpacity>
   );
 };
@@ -28,23 +36,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   settingsItemContent: {
     flex: 1,
   },
   settingsItemTitle: {
+    ...Typography.body,
     fontSize: 16,
     fontWeight: '500',
-    color: '#1F2937',
-    marginBottom: 2,
   },
   settingsItemSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 18,
+    ...Typography.body,
+    fontSize: 13,
+    marginTop: 2,
   },
 });
 

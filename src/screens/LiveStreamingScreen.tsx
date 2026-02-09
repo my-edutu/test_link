@@ -13,6 +13,9 @@ import {
   FlatList,
   Modal,
   Image,
+  Platform,
+  PermissionsAndroid,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import {
@@ -21,15 +24,19 @@ import {
   useTracks,
   useParticipants,
   useLocalParticipant,
+  useRoomContext,
+  useIsEncrypted,
 } from '@livekit/react-native';
-import { Track } from 'livekit-client';
+import { Track, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useTheme } from '../context/ThemeContext';
 import { trackEvent, AnalyticsEvents } from '../services/analytics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { API_BASE_URL } from '../config';
+import { liveService } from '../services/liveService';
+import { authFetch } from '../services/authFetch';
+import * as Network from 'expo-network';
 
 // --- Floating Hearts Animation Component ---
 const HeartIcon = ({ style }: { style: any }) => {
@@ -123,29 +130,152 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation }) => {
 
   const liveAnim = useRef(new Animated.Value(1)).current;
   const flatListRef = useRef<FlatList>(null);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
 
-  // 1. Fetch Token from Backend
+  // Connection state management
+  const [tokenFetchRetries, setTokenFetchRetries] = useState(0);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const MAX_TOKEN_RETRIES = 3;
+
+  // 0. Request Camera and Microphone Permissions
   useEffect(() => {
-    const fetchToken = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/live/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomName,
-            participantName: user?.user_metadata?.username || user?.email?.split('@')[0] || 'Host'
-          })
-        });
-        const data = await response.json();
-        setToken(data.token);
-        setServerUrl(data.serverUrl);
-      } catch (err) {
-        console.error('Failed to get token:', err);
-        Alert.alert('Error', 'Could not connect to live streaming server');
+    const requestPermissions = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          const cameraPermission = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.CAMERA,
+            {
+              title: 'Camera Permission',
+              message: 'LinguaLink needs camera access for live streaming',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel',
+              buttonPositive: 'OK',
+            }
+          );
+          const audioPermission = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            {
+              title: 'Microphone Permission',
+              message: 'LinguaLink needs microphone access for live streaming',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel',
+              buttonPositive: 'OK',
+            }
+          );
+
+          const granted =
+            cameraPermission === PermissionsAndroid.RESULTS.GRANTED &&
+            audioPermission === PermissionsAndroid.RESULTS.GRANTED;
+
+          console.log('[LiveStream] Permissions:', { cameraPermission, audioPermission, granted });
+
+          if (granted) {
+            setPermissionsGranted(true);
+          } else {
+            Alert.alert(
+              'Permissions Required',
+              'Camera and microphone permissions are required for live streaming.',
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          }
+        } catch (err) {
+          console.error('Permission error:', err);
+          Alert.alert('Error', 'Failed to request permissions.');
+        }
+      } else {
+        // iOS handles permissions through Info.plist and system prompts
+        setPermissionsGranted(true);
       }
     };
-    if (user) fetchToken();
-  }, [user, roomName]);
+
+    requestPermissions();
+  }, [navigation]);
+
+  // 1. Fetch Token from Backend (only after permissions granted) - with retry mechanism
+  useEffect(() => {
+    if (!permissionsGranted || !user) {
+      console.log('[LiveStream] Waiting for permissions/user:', { permissionsGranted, hasUser: !!user });
+      return;
+    }
+
+    const fetchToken = async (retryAttempt: number = 0) => {
+      setTokenError(null);
+
+      try {
+        // Check network connectivity first
+        const netState = await Network.getNetworkStateAsync();
+        if (!netState.isConnected || !netState.isInternetReachable) {
+          throw new Error('NO_NETWORK');
+        }
+
+        const participantName = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Host';
+        console.log('[LiveStream] Fetching LiveKit token for room:', roomName, 'participant:', participantName, 'attempt:', retryAttempt + 1);
+
+        const { token: newToken, serverUrl: newServerUrl } = await liveService.getJoinToken(roomName, participantName);
+
+        console.log('[LiveStream] Token received:', {
+          hasToken: !!newToken,
+          tokenLength: newToken?.length,
+          serverUrl: newServerUrl
+        });
+
+        setToken(newToken);
+        setServerUrl(newServerUrl);
+        setTokenError(null);
+        setTokenFetchRetries(0);
+      } catch (err: any) {
+        console.error('[LiveStream] Failed to get token:', err);
+
+        // Determine specific error type
+        let errorMessage = 'Connection failed';
+        let shouldRetry = true;
+
+        if (err.message === 'NO_NETWORK') {
+          errorMessage = 'No internet connection. Please check your network and try again.';
+          shouldRetry = false;
+        } else if (err.message?.includes('Authentication required') || err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+          errorMessage = 'Session expired. Please log in again.';
+          shouldRetry = false;
+        } else if (err.message?.includes('403') || err.message?.includes('Forbidden')) {
+          errorMessage = 'You do not have permission to stream. Please contact support.';
+          shouldRetry = false;
+        } else if (err.message?.includes('500') || err.message?.includes('502') || err.message?.includes('503')) {
+          errorMessage = 'Server is temporarily unavailable. Retrying...';
+        } else if (err.message?.includes('timeout') || err.message?.includes('TIMEOUT')) {
+          errorMessage = 'Request timed out. Retrying...';
+        } else if (err.message?.includes('Network request failed') || err.message?.includes('fetch')) {
+          errorMessage = 'Could not reach server. Checking connection...';
+        }
+
+        setTokenError(errorMessage);
+
+        // Retry logic with exponential backoff
+        if (shouldRetry && retryAttempt < MAX_TOKEN_RETRIES) {
+          const delay = Math.pow(2, retryAttempt) * 1000; // 1s, 2s, 4s
+          console.log(`[LiveStream] Retrying in ${delay}ms (attempt ${retryAttempt + 1}/${MAX_TOKEN_RETRIES})`);
+          setTokenFetchRetries(retryAttempt + 1);
+          setTimeout(() => fetchToken(retryAttempt + 1), delay);
+        } else if (!shouldRetry || retryAttempt >= MAX_TOKEN_RETRIES) {
+          // Final failure - show alert with specific message
+          const finalMessage = shouldRetry
+            ? 'Could not connect after multiple attempts. Please check your connection and try again.'
+            : errorMessage;
+
+          Alert.alert(
+            'Connection Error',
+            finalMessage,
+            [
+              { text: 'Go Back', onPress: () => navigation.goBack(), style: 'cancel' },
+              { text: 'Retry', onPress: () => { setTokenFetchRetries(0); fetchToken(0); } }
+            ]
+          );
+        }
+      }
+    };
+    fetchToken(0);
+  }, [user, roomName, permissionsGranted]);
 
   // Timer Logic
   useEffect(() => {
@@ -200,29 +330,20 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation }) => {
 
   const startLive = async () => {
     try {
-      // 1. Start on Backend
-      const response = await fetch(`${API_BASE_URL}/live/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          title: title,
-          roomName: roomName
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to start stream');
-
+      // Get user's primary language from profile metadata
+      const userLanguage = user?.unsafeMetadata?.primary_language || user?.publicMetadata?.primary_language || 'English';
+      const { roomId } = await liveService.startStream(title, userLanguage as string);
       setIsLive(true);
 
       // Track live stream started event
       trackEvent(AnalyticsEvents.LIVE_STREAM_STARTED, {
         room_id: roomName,
         title: title,
+        language: userLanguage,
       });
     } catch (err) {
       console.error('Start error:', err);
-      Alert.alert('Error', 'Failed to start live stream');
+      Alert.alert('Error', 'Failed to start live stream. Please ensure you are logged in.');
     }
   };
 
@@ -234,9 +355,8 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation }) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await fetch(`${API_BASE_URL}/live/end`, {
+            await authFetch('/live/end', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ roomId: roomName })
             });
 
@@ -274,13 +394,70 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {token && serverUrl ? (
+      {!permissionsGranted ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF8A00" />
+          <Text style={{ color: 'white', fontSize: 16, marginTop: 16 }}>Requesting camera permissions...</Text>
+        </View>
+      ) : !token || !serverUrl ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF8A00" />
+          <Text style={{ color: 'white', fontSize: 16, marginTop: 16 }}>
+            {tokenError || 'Connecting to stream server...'}
+          </Text>
+          {tokenFetchRetries > 0 && !tokenError?.includes('No internet') && (
+            <Text style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
+              Retry attempt {tokenFetchRetries}/{MAX_TOKEN_RETRIES}...
+            </Text>
+          )}
+          {tokenError && (
+            <TouchableOpacity
+              style={{ marginTop: 20, backgroundColor: '#FF8A00', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 25 }}
+              onPress={() => {
+                setTokenError(null);
+                setTokenFetchRetries(0);
+                // Trigger re-fetch by updating roomName state briefly
+                setToken(null);
+                setServerUrl(null);
+              }}
+            >
+              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Retry Connection</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
         <LiveKitRoom
           serverUrl={serverUrl}
           token={token}
-          connect={true} // Always connect to PREVIEW until live
+          connect={true}
           video={true}
           audio={true}
+          options={{
+            adaptiveStream: true,
+            dynacast: true,
+            videoCaptureDefaults: {
+              facingMode: 'user',
+            },
+          }}
+          onConnected={() => {
+            console.log('[LiveStream] Room connected!');
+            setConnectionError(null);
+          }}
+          onDisconnected={() => {
+            console.log('[LiveStream] Room disconnected');
+          }}
+          onError={(error) => {
+            console.error('[LiveStream] Room error:', error);
+            // Parse error and show user-friendly message
+            const errorMessage = error?.message || 'Unknown error';
+            if (errorMessage.includes('token') || errorMessage.includes('expired')) {
+              setConnectionError('Session expired. Please try again.');
+            } else if (errorMessage.includes('network') || errorMessage.includes('connection')) {
+              setConnectionError('Network error. Please check your connection.');
+            } else {
+              setConnectionError('Connection error. Retrying...');
+            }
+          }}
         >
           <RoomView
             isLive={isLive}
@@ -300,30 +477,213 @@ const LiveStreamingScreen: React.FC<any> = ({ navigation }) => {
             durationString={formatDuration(duration)}
           />
         </LiveKitRoom>
-      ) : (
-        <View style={styles.loadingContainer}>
-          <Text style={{ color: 'white' }}>Initializing...</Text>
-        </View>
       )}
     </View>
   );
 };
 
 const RoomView = ({ isLive, startLive, endLive, messages, newComment, setNewComment, sendMessage, userTheme, navigation, heartCount, onPressHeart, title, setTitle, roomName, durationString }: any) => {
-  const tracks = useTracks([Track.Source.Camera]);
+  const room = useRoomContext();
+  // Get all camera tracks - both local and remote
+  const allCameraTracks = useTracks([Track.Source.Camera]);
   const participants = useParticipants();
-  const { localParticipant } = useLocalParticipant();
+  const { localParticipant, cameraTrack, isCameraEnabled } = useLocalParticipant();
   const flatListRef = useRef<FlatList>(null);
+  const [connectionState, setConnectionState] = useState<string>('connecting');
+  const [cameraReady, setCameraReady] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const insets = useSafeAreaInsets();
 
-  // Periodically update viewer count on backend
+  // Reconnection state
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
+
+  // Monitor room connection state with reconnection handling
+  useEffect(() => {
+    if (!room) {
+      console.log('[LiveStream] Room context not available yet');
+      return;
+    }
+
+    const handleConnectionChange = (state: ConnectionState) => {
+      console.log('[LiveStream] Connection state changed:', state);
+      setConnectionState(state);
+
+      // Reset reconnection state when connected
+      if (state === ConnectionState.Connected) {
+        setIsReconnecting(false);
+        setReconnectAttempt(0);
+        setDisconnectReason(null);
+      }
+    };
+
+    const handleTrackPublished = (publication: any) => {
+      console.log('[LiveStream] Local track published:', publication?.kind);
+      if (publication?.kind === 'video') {
+        setCameraReady(true);
+      }
+    };
+
+    const handleTrackSubscribed = (track: any) => {
+      console.log('[LiveStream] Track subscribed:', track?.kind);
+    };
+
+    // Handle reconnecting event
+    const handleReconnecting = () => {
+      console.log('[LiveStream] Reconnecting to server...');
+      setIsReconnecting(true);
+      setReconnectAttempt(prev => prev + 1);
+    };
+
+    // Handle reconnected event
+    const handleReconnected = () => {
+      console.log('[LiveStream] Reconnected successfully!');
+      setIsReconnecting(false);
+      setReconnectAttempt(0);
+    };
+
+    // Handle disconnected event with reason
+    const handleDisconnected = (reason?: DisconnectReason) => {
+      console.log('[LiveStream] Disconnected, reason:', reason);
+      setIsReconnecting(false);
+
+      // Map disconnect reasons to user-friendly messages
+      let message = 'Disconnected from stream';
+      let shouldGoBack = false;
+
+      switch (reason) {
+        case DisconnectReason.DUPLICATE_IDENTITY:
+          message = 'You joined from another device. This session has ended.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.ROOM_DELETED:
+          message = 'The stream room has been closed.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.PARTICIPANT_REMOVED:
+          message = 'You have been removed from the stream.';
+          shouldGoBack = true;
+          break;
+        case DisconnectReason.JOIN_FAILURE:
+          message = 'Failed to join the stream. Please check your connection and try again.';
+          break;
+        case DisconnectReason.CLIENT_INITIATED:
+          // User intentionally disconnected, no message needed
+          return;
+        default:
+          message = 'Connection lost. Please try rejoining the stream.';
+      }
+
+      setDisconnectReason(message);
+
+      if (shouldGoBack) {
+        Alert.alert('Stream Ended', message, [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        Alert.alert('Connection Lost', message, [
+          { text: 'Go Back', onPress: () => navigation.goBack(), style: 'cancel' },
+          { text: 'Retry', onPress: () => setDisconnectReason(null) }
+        ]);
+      }
+    };
+
+    room.on(RoomEvent.ConnectionStateChanged, handleConnectionChange);
+    room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
+    room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+    room.on(RoomEvent.Reconnecting, handleReconnecting);
+    room.on(RoomEvent.Reconnected, handleReconnected);
+    room.on(RoomEvent.Disconnected, handleDisconnected);
+
+    // Check initial state
+    setConnectionState(room.state);
+    console.log('[LiveStream] Room initial state:', room.state);
+
+    return () => {
+      room.off(RoomEvent.ConnectionStateChanged, handleConnectionChange);
+      room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
+      room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+      room.off(RoomEvent.Reconnecting, handleReconnecting);
+      room.off(RoomEvent.Reconnected, handleReconnected);
+      room.off(RoomEvent.Disconnected, handleDisconnected);
+    };
+  }, [room, navigation]);
+
+  // Enable camera after room connects - with retry mechanism
+  useEffect(() => {
+    const enableCamera = async () => {
+      if (!room || !localParticipant) {
+        console.log('[LiveStream] Waiting for room/localParticipant...', { hasRoom: !!room, hasLP: !!localParticipant });
+        return;
+      }
+
+      if (room.state !== ConnectionState.Connected) {
+        console.log('[LiveStream] Room not connected yet, state:', room.state);
+        return;
+      }
+
+      try {
+        console.log('[LiveStream] Attempting to enable camera (attempt', retryCount + 1, ')...');
+
+        // Check if camera is already enabled
+        if (isCameraEnabled) {
+          console.log('[LiveStream] Camera already enabled');
+          setCameraReady(true);
+          return;
+        }
+
+        await room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
+        console.log('[LiveStream] Camera and mic enabled successfully');
+        setCameraReady(true);
+      } catch (err: any) {
+        console.error('[LiveStream] Failed to enable camera:', err?.message || err);
+        // Retry after a delay
+        if (retryCount < 3) {
+          setTimeout(() => setRetryCount(c => c + 1), 1000);
+        }
+      }
+    };
+    enableCamera();
+  }, [room, room?.state, localParticipant, isCameraEnabled, retryCount]);
+
+  // Debug: Log track state
+  useEffect(() => {
+    console.log('[LiveStream] Track debug:', {
+      roomState: room?.state,
+      hasLocalParticipant: !!localParticipant,
+      hasCameraTrack: !!cameraTrack,
+      isCameraEnabled: isCameraEnabled,
+      cameraReady: cameraReady,
+      allCameraTracks: allCameraTracks.length,
+      localVideoTracks: localParticipant?.videoTrackPublications?.size || 0,
+    });
+  }, [room?.state, localParticipant, cameraTrack, isCameraEnabled, cameraReady, allCameraTracks.length]);
+
+  // Build the local camera track reference
+  const localCameraTrackRef = useMemo(() => {
+    // First try from useLocalParticipant hook
+    if (cameraTrack && localParticipant) {
+      return { participant: localParticipant, publication: cameraTrack, source: Track.Source.Camera };
+    }
+    // Fallback: find local track from all tracks
+    const localTrack = allCameraTracks.find(t => t.participant?.isLocal);
+    if (localTrack) {
+      return localTrack;
+    }
+    return null;
+  }, [cameraTrack, localParticipant, allCameraTracks]);
+
+  // Periodically update viewer count on backend (authenticated)
   useEffect(() => {
     if (!isLive) return;
 
     const interval = setInterval(() => {
       const count = participants.length > 0 ? participants.length - 1 : 0; // Exclude host
-      fetch(`${API_BASE_URL}/live/count`, {
+      authFetch('/live/count', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId: roomName, count })
       }).catch(e => console.log('Count update failed', e));
     }, 10000); // Every 10 seconds
@@ -337,28 +697,73 @@ const RoomView = ({ isLive, startLive, endLive, messages, newComment, setNewComm
       if (videoTrackPub && videoTrackPub.track) {
         // @ts-ignore
         const currentFacingMode = videoTrackPub.track.mediaStreamTrack.getSettings().facingMode;
+        const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
         // @ts-ignore
         await videoTrackPub.track.restart({
-          facingMode: currentFacingMode === 'user' ? 'environment' : 'user'
+          facingMode: newFacingMode
         });
+        setIsFrontCamera(newFacingMode === 'user');
       }
     }
   };
 
+  // Prefer local camera track for host preview, fallback to any available camera track
+  const videoTrackRef = localCameraTrackRef || (allCameraTracks.length > 0 ? allCameraTracks[0] : null);
+
+  // Get status message based on connection state
+  const getStatusMessage = () => {
+    if (connectionState !== 'connected') {
+      return `Connecting to LiveKit... (${connectionState})`;
+    }
+    if (!isCameraEnabled && !cameraReady) {
+      return `Enabling camera... (attempt ${retryCount + 1}/4)`;
+    }
+    if (!videoTrackRef) {
+      return 'Waiting for camera track...';
+    }
+    return 'Camera ready';
+  };
+
   return (
     <View style={StyleSheet.absoluteFill}>
+      {/* Reconnecting Overlay */}
+      {isReconnecting && (
+        <View style={styles.reconnectingOverlay}>
+          <View style={styles.reconnectingBox}>
+            <ActivityIndicator size="large" color="#FF8A00" />
+            <Text style={styles.reconnectingText}>Reconnecting...</Text>
+            <Text style={styles.reconnectingSubtext}>
+              Attempt {reconnectAttempt}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Background Video */}
-      {tracks.length > 0 ? (
-        <VideoTrack trackRef={tracks[0]} style={styles.camera} />
+      {videoTrackRef ? (
+        <VideoTrack trackRef={videoTrackRef} style={styles.camera} mirror={isFrontCamera} />
       ) : (
-        <View style={[styles.camera, { backgroundColor: '#111' }]} />
+        <View style={[styles.camera, { backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+          <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>{getStatusMessage()}</Text>
+          <Text style={{ color: '#888', fontSize: 11, marginTop: 12, textAlign: 'center' }}>
+            Room: {connectionState} | Tracks: {allCameraTracks.length} | Camera: {isCameraEnabled ? 'ON' : 'OFF'}
+          </Text>
+          {connectionState === 'connected' && !videoTrackRef && retryCount >= 3 && (
+            <TouchableOpacity
+              style={{ marginTop: 20, backgroundColor: '#FF8A00', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}
+              onPress={() => setRetryCount(0)}
+            >
+              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Retry Camera</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Floating Hearts Layer */}
       <FloatingHearts count={heartCount} />
 
       {/* Overlay HUD */}
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+      <View style={[styles.overlay, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <TouchableOpacity onPress={() => isLive ? endLive() : navigation.goBack()} style={styles.closeBtn}>
@@ -440,7 +845,7 @@ const RoomView = ({ isLive, startLive, endLive, messages, newComment, setNewComm
             </View>
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </View>
   );
 };
@@ -449,6 +854,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   camera: { ...StyleSheet.absoluteFillObject },
+  mirroredCamera: { transform: [{ scaleX: -1 }] },
   overlay: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -515,7 +921,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 12,
     marginLeft: 4
-  }
+  },
+  reconnectingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  reconnectingBox: {
+    backgroundColor: 'rgba(30, 30, 30, 0.95)',
+    padding: 30,
+    borderRadius: 16,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  reconnectingText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+  },
+  reconnectingSubtext: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 8,
+  },
 });
 
 export default LiveStreamingScreen;

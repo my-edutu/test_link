@@ -1,4 +1,7 @@
 import { supabase } from '../supabaseClient';
+import { getOptionalCurrentUserId } from '../services/authFetch';
+import { toggleLike as offlineToggleLike, getEffectiveLikeState } from '../services/local/offlineContent';
+import * as Network from 'expo-network';
 
 export interface Comment {
   id: string;
@@ -50,7 +53,7 @@ export const getComments = async (
   parentCommentId?: string
 ): Promise<Comment[]> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
 
     let query = supabase
       .from('comments')
@@ -127,7 +130,7 @@ export const createComment = async (
   audioDuration?: number
 ): Promise<Comment | null> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return null;
 
     // Get clip details for notification
@@ -188,7 +191,7 @@ export const updateComment = async (
   content: string
 ): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
     const { error } = await supabase
@@ -219,7 +222,7 @@ export const updateComment = async (
  */
 export const deleteComment = async (commentId: string): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
     const { error } = await supabase
@@ -241,66 +244,79 @@ export const deleteComment = async (commentId: string): Promise<boolean> => {
 };
 
 /**
- * Like or unlike a voice clip
- * @param clipId - ID of the voice clip
- * @returns Promise<boolean>
+ * Like or unlike a feed item with offline support
+ * @param targetId - ID of the item
+ * @param targetType - Type of the item ('voice' | 'video' | 'story')
+ * @param currentlyLiked - Optional: current like state for optimistic updates
+ * @returns Promise<{ success: boolean; newLikedState?: boolean; isOffline?: boolean }>
  */
-export const toggleVoiceClipLike = async (clipId: string): Promise<boolean> => {
+export const toggleVoiceClipLike = async (
+  targetId: string,
+  targetType: 'voice' | 'video' | 'story' = 'voice',
+  currentlyLiked?: boolean
+): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
-    // Get clip details for notification
-    const { data: clipData } = await supabase
-      .from('voice_clips')
-      .select('user_id, phrase')
-      .eq('id', clipId)
-      .single();
-
-    if (!clipData) return false;
-
-    // Check if already liked
-    const { data: existingLike } = await supabase
-      .from('likes')
-      .select('id')
-      .eq('user_id', currentUserId)
-      .eq('target_type', 'voice_clip')
-      .eq('target_id', clipId)
-      .single();
-
-    if (existingLike) {
-      // Unlike
-      const { error } = await supabase
-        .from('likes')
-        .delete()
-        .eq('id', existingLike.id);
-
-      if (error) {
-        console.error('Error unliking voice clip:', error);
-        return false;
-      }
-    } else {
-      // Like
-      const { error } = await supabase
-        .from('likes')
-        .insert({
-          user_id: currentUserId,
-          target_type: 'voice_clip',
-          target_id: clipId,
-        });
-
-      if (error) {
-        console.error('Error liking voice clip:', error);
-        return false;
-      }
-
+    // If we know the current state, use offline-aware toggle
+    if (currentlyLiked !== undefined) {
+      const result = await offlineToggleLike(
+        currentUserId,
+        targetId,
+        targetType,
+        currentlyLiked
+      );
+      return result.success;
     }
 
-    return true;
+    // Legacy behavior: check online status and current like state
+    const networkState = await Network.getNetworkStateAsync();
+    const isOnline = networkState.isConnected ?? false;
+
+    const mappedTargetType = targetType === 'voice' ? 'voice_clip' : targetType === 'video' ? 'video_clip' : 'story';
+
+    // Check if already liked
+    let isLiked = false;
+    if (isOnline) {
+      const { data: existingLike } = await supabase
+        .from('likes')
+        .select('id')
+        .eq('user_id', currentUserId)
+        .eq('target_type', mappedTargetType)
+        .eq('target_id', targetId)
+        .single();
+      
+      isLiked = !!existingLike;
+    }
+
+    // Use offline-aware toggle
+    const result = await offlineToggleLike(
+      currentUserId,
+      targetId,
+      targetType,
+      isLiked
+    );
+
+    return result.success;
   } catch (error) {
-    console.error('Error toggling voice clip like:', error);
+    console.error(`Error toggling ${targetType} like:`, error);
     return false;
   }
+};
+
+/**
+ * Get the like state considering pending offline changes
+ */
+export const getLikeStateWithOffline = async (
+  targetId: string,
+  targetType: 'voice' | 'video' | 'story' | 'comment',
+  serverLikeState: boolean
+): Promise<boolean> => {
+  const currentUserId = getOptionalCurrentUserId();
+  if (!currentUserId) return serverLikeState;
+  
+  return getEffectiveLikeState(currentUserId, targetId, targetType, serverLikeState);
 };
 
 /**
@@ -310,7 +326,7 @@ export const toggleVoiceClipLike = async (clipId: string): Promise<boolean> => {
  */
 export const toggleCommentLike = async (commentId: string): Promise<boolean> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
     if (!currentUserId) return false;
 
     // Get comment details for notification
@@ -367,46 +383,64 @@ export const toggleCommentLike = async (commentId: string): Promise<boolean> => 
 };
 
 /**
- * Get interaction stats for a voice clip
- * @param clipId - ID of the voice clip
+ * Get interaction stats for a feed item
+ * @param targetId - ID of the item
+ * @param targetType - Type of the item ('voice' | 'video' | 'story')
  * @returns Promise<InteractionStats | null>
  */
 export const getInteractionStats = async (
-  clipId: string
+  targetId: string,
+  targetType: 'voice' | 'video' | 'story' = 'voice'
 ): Promise<InteractionStats | null> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
 
-    // Get voice clip data
-    const { data: clipData } = await supabase
-      .from('voice_clips')
-      .select('likes_count, comments_count')
-      .eq('id', clipId)
-      .single();
+    const mappedTargetType = targetType === 'voice' ? 'voice_clip' : targetType === 'video' ? 'video_clip' : 'story';
+    const table = targetType === 'voice' ? 'voice_clips' : targetType === 'video' ? 'video_clips' : 'stories';
 
-    if (!clipData) return null;
+    let likesCount = 0;
+    let commentsCount = 0;
 
-    // Check if current user liked the clip
+    // For stories, we might not have counters in the table
+    if (targetType === 'story') {
+      const { count } = await supabase
+        .from('likes')
+        .select('*', { count: 'exact', head: true })
+        .eq('target_type', 'story')
+        .eq('target_id', targetId);
+      likesCount = count || 0;
+    } else {
+      const { data } = await supabase
+        .from(table)
+        .select('likes_count, comments_count')
+        .eq('id', targetId)
+        .single();
+
+      likesCount = data?.likes_count || 0;
+      commentsCount = data?.comments_count || 0;
+    }
+
+    // Check if current user liked the item
     let isLikedByCurrentUser = false;
     if (currentUserId) {
       const { data: likeData } = await supabase
         .from('likes')
         .select('id')
         .eq('user_id', currentUserId)
-        .eq('target_type', 'voice_clip')
-        .eq('target_id', clipId)
+        .eq('target_type', mappedTargetType)
+        .eq('target_id', targetId)
         .single();
 
       isLikedByCurrentUser = !!likeData;
     }
 
     return {
-      likes_count: clipData.likes_count || 0,
-      comments_count: clipData.comments_count || 0,
+      likes_count: likesCount,
+      comments_count: commentsCount,
       is_liked_by_current_user: isLikedByCurrentUser,
     };
   } catch (error) {
-    console.error('Error getting interaction stats:', error);
+    console.error(`Error getting ${targetType} interaction stats:`, error);
     return null;
   }
 };
@@ -424,7 +458,7 @@ export const getCommentReplies = async (
   offset: number = 0
 ): Promise<Comment[]> => {
   try {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    const currentUserId = getOptionalCurrentUserId();
 
     const { data, error } = await supabase
       .from('comments')
@@ -590,6 +624,6 @@ export const subscribeToComments = async (
     };
   } catch (error) {
     console.error('Error subscribing to comments:', error);
-    return () => {};
+    return () => { };
   }
 };

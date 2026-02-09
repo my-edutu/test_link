@@ -13,8 +13,13 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme } from '../context/ThemeContext';
+import { GlassCard } from './GlassCard';
+import { Colors } from '../constants/Theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,6 +43,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onGroupCreated,
 }) => {
   const { user, session } = useAuth();
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(false);
   const [newGroup, setNewGroup] = useState<NewGroup>({
     name: '',
@@ -59,9 +65,6 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
     setLoading(true);
     try {
-      console.log('Creating group with user ID:', user.id);
-      console.log('Group data:', { title: newGroup.name, is_group: true, created_by: user.id });
-
       if (!session) {
         Alert.alert('Error', 'No active session found. Please log in again.');
         return;
@@ -124,109 +127,116 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       animationType="slide"
       onRequestClose={handleClose}
     >
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Create New Group</Text>
-            <TouchableOpacity
-              onPress={handleClose}
-              style={styles.closeButton}
+      <View style={styles.modalOverlay}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <GlassCard intensity={40} style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create New Group</Text>
+              <TouchableOpacity
+                onPress={handleClose}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalBodyContent}
             >
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            style={styles.modalBody}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.modalBodyContent}
-          >
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Group Name</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newGroup.name}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))}
-                placeholder="Enter group name"
-                maxLength={50}
-                returnKeyType="next"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description</Text>
-              <TextInput
-                style={[styles.textInput, styles.textArea]}
-                value={newGroup.description}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))}
-                placeholder="Describe your group"
-                multiline
-                numberOfLines={3}
-                maxLength={200}
-                returnKeyType="next"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Language Focus</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newGroup.language}
-                onChangeText={(text) => setNewGroup(prev => ({ ...prev, language: text }))}
-                placeholder="e.g., Spanish, French, Igbo"
-                returnKeyType="done"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Group Type</Text>
-              <View style={styles.radioGroup}>
-                <TouchableOpacity
-                  style={styles.radioOption}
-                  onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: false }))}
-                >
-                  <View style={styles.radioButton}>
-                    {!newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
-                  </View>
-                  <Text style={styles.radioText}>Public - Anyone can join</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.radioOption}
-                  onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: true }))}
-                >
-                  <View style={styles.radioButton}>
-                    {newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
-                  </View>
-                  <Text style={styles.radioText}>Private - Invite only</Text>
-                </TouchableOpacity>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Group Name</Text>
+                <TextInput
+                  style={[styles.textInput, { color: Colors.text, borderColor: Colors.border }]}
+                  value={newGroup.name}
+                  onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))}
+                  placeholder="Enter group name"
+                  placeholderTextColor={Colors.textSecondary}
+                  maxLength={50}
+                  returnKeyType="next"
+                />
               </View>
-            </View>
-          </ScrollView>
 
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleClose}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={createGroup}
-              disabled={loading}
-            >
-              <Text style={styles.createButtonText}>
-                {loading ? 'Creating...' : 'Create Group'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Description</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea, { color: Colors.text, borderColor: Colors.border }]}
+                  value={newGroup.description}
+                  onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))}
+                  placeholder="Describe your group"
+                  placeholderTextColor={Colors.textSecondary}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={200}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Language Focus</Text>
+                <TextInput
+                  style={[styles.textInput, { color: Colors.text, borderColor: Colors.border }]}
+                  value={newGroup.language}
+                  onChangeText={(text) => setNewGroup(prev => ({ ...prev, language: text }))}
+                  placeholder="e.g., Spanish, French, Igbo"
+                  placeholderTextColor={Colors.textSecondary}
+                  returnKeyType="done"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Group Type</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: false }))}
+                  >
+                    <View style={[styles.radioButton, { borderColor: Colors.border }]}>
+                      {!newGroup.isPrivate && <View style={[styles.radioButtonSelected, { backgroundColor: Colors.primary }]} />}
+                    </View>
+                    <Text style={[styles.radioText, { color: Colors.text }]}>Public - Anyone can join</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.radioOption}
+                    onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: true }))}
+                  >
+                    <View style={[styles.radioButton, { borderColor: Colors.border }]}>
+                      {newGroup.isPrivate && <View style={[styles.radioButtonSelected, { backgroundColor: Colors.primary }]} />}
+                    </View>
+                    <Text style={[styles.radioText, { color: Colors.text }]}>Private - Invite only</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { borderTopColor: Colors.border }]}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { borderColor: Colors.border }]}
+                onPress={handleClose}
+              >
+                <Text style={[styles.cancelButtonText, { color: Colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: Colors.primary }]}
+                onPress={createGroup}
+                disabled={loading}
+              >
+                <Text style={styles.createButtonText}>
+                  {loading ? 'Creating...' : 'Create Group'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };
@@ -234,15 +244,19 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  keyboardView: {
+    width: '100%',
+    maxHeight: '90%',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: height * 0.8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     flex: 1,
+    paddingTop: 8,
+    backgroundColor: 'rgba(30, 30, 30, 0.7)', // Fallback for no blur
   },
   modalHeader: {
     flexDirection: 'row',
@@ -250,13 +264,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.text,
   },
   closeButton: {
     padding: 4,
@@ -266,7 +278,8 @@ const styles = StyleSheet.create({
   },
   modalBodyContent: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 10,
+    paddingBottom: 40,
   },
   inputGroup: {
     marginBottom: 20,
@@ -274,83 +287,80 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#374151',
+    color: Colors.textSecondary,
     marginBottom: 8,
+    marginLeft: 4,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   textArea: {
-    height: 80,
+    height: 100,
     textAlignVertical: 'top',
   },
   radioGroup: {
     marginTop: 8,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 16,
+    padding: 12,
   },
   radioOption: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
+    paddingVertical: 4,
   },
   radioButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
     marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   radioButtonSelected: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF8A00',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   radioText: {
-    fontSize: 14,
-    color: '#374151',
+    fontSize: 15,
+    fontWeight: '500',
   },
   modalFooter: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    marginBottom: 20,
+    gap: 12,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 12,
-    marginRight: 8,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
     alignItems: 'center',
   },
   cancelButtonText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontWeight: '600',
   },
   createButton: {
     flex: 1,
-    paddingVertical: 12,
-    marginLeft: 8,
-    borderRadius: 8,
-    backgroundColor: '#FF8A00',
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
   },
   createButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
 });

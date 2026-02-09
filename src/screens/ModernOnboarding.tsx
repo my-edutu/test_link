@@ -8,117 +8,111 @@ import {
     SafeAreaView,
     ScrollView,
     useWindowDimensions,
+    Dimensions
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    interpolate,
+    Extrapolate
+} from 'react-native-reanimated';
+
+import { Colors, Gradients, Typography, Layout } from '../constants/Theme';
+import { useTheme } from '../context/ThemeContext';
+import { GlassCard } from '../components/GlassCard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SLIDES = [
     {
         id: '1',
-        headerTitle: 'AMPLIFY YOUR VOICE',
-        headline: 'Preserve Our',
-        highlight: 'Heritage',
-        body: 'Your voice is powerful. Join thousands of Nigerians preserving our local languages for the future.',
-        image: require('../../assets/sketch_mic.png'),
-        showHeaderHelp: true,
-        showSkip: false,
+        title: 'Share Your',
+        highlight: 'Voice',
+        content: 'Record and share phrases in your native language or dialect.',
+        icon: 'mic-outline',
+        color: '#FF8A00'
     },
     {
         id: '2',
-        headerTitle: '',
-        headline: 'Connect with',
-        highlight: 'Your People',
-        body: 'Find friends who speak your dialect. Challenge them, share recordings, and celebrate your roots.',
-        image: require('../../assets/sketch_community.png'),
-        tag: 'COMMUNITY & CULTURE',
-        showSkip: true,
+        title: 'Create AI',
+        highlight: 'Stories',
+        content: 'Turn your voice into animated stories and cultural tales.',
+        icon: 'sparkles-outline',
+        color: '#FF8A00'
     },
     {
         id: '3',
-        headerTitle: 'LinguaLink',
-        headline: 'Get',
-        highlight: 'Rewarded',
-        body: 'Climb the leaderboards, earn points for every recording, and unlock exclusive rewards.',
-        image: require('../../assets/sketch_reward.png'),
-        showBack: true,
+        title: 'Preserve',
+        highlight: 'Culture',
+        content: 'Help build the world\'s largest archive of living languages.',
+        icon: 'globe-outline',
+        color: '#FF8A00'
+    },
+    {
+        id: '4',
+        title: 'Earn and',
+        highlight: 'Learn',
+        content: 'Get rewarded for contributions and discover new languages.',
+        icon: 'gift-outline',
+        color: '#FF8A00'
     }
 ];
 
 export default function ModernOnboarding() {
     const navigation = useNavigation<any>();
-    const { colors, theme } = useTheme();
     const { width } = useWindowDimensions();
+    const { colors, isDark } = useTheme();
     const [currentIndex, setCurrentIndex] = useState(0);
+    const scrollX = useSharedValue(0);
     const scrollViewRef = useRef<ScrollView>(null);
-    const styles = useMemo(() => createStyles(colors, width), [colors, width]);
 
-    const handleScroll = useCallback((event: any) => {
-        const offsetX = event.nativeEvent.contentOffset.x;
-        const index = Math.round(offsetX / width);
-        if (index !== currentIndex && index >= 0 && index < SLIDES.length) {
+    const handleScroll = (event: any) => {
+        scrollX.value = event.nativeEvent.contentOffset.x;
+        const index = Math.round(scrollX.value / width);
+        if (index !== currentIndex) {
             setCurrentIndex(index);
         }
-    }, [width, currentIndex]);
+    };
 
-    const goToSlide = useCallback((index: number) => {
-        scrollViewRef.current?.scrollTo({ x: index * width, animated: true });
-        setCurrentIndex(index);
-    }, [width]);
-
-    const nextSlide = useCallback(() => {
-        console.log('Next button pressed, currentIndex:', currentIndex);
+    const nextSlide = async () => {
         if (currentIndex < SLIDES.length - 1) {
-            goToSlide(currentIndex + 1);
+            scrollViewRef.current?.scrollTo({ x: (currentIndex + 1) * width, animated: true });
         } else {
+            await AsyncStorage.setItem('HAS_SEEN_ONBOARDING', 'true');
             navigation.navigate('ModernAuthLanding');
         }
-    }, [currentIndex, goToSlide, navigation]);
-
-    const prevSlide = useCallback(() => {
-        if (currentIndex > 0) {
-            goToSlide(currentIndex - 1);
-        }
-    }, [currentIndex, goToSlide]);
-
-    const currentSlide = SLIDES[currentIndex];
+    };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar style={theme === 'dark' ? "light" : "dark"} />
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar style={isDark ? "light" : "dark"} translucent backgroundColor="transparent" />
 
-            {/* Dynamic Header */}
-            <View style={styles.header}>
-                {currentSlide.showBack ? (
-                    <TouchableOpacity onPress={prevSlide} style={styles.iconBtn}>
-                        <MaterialIcons name="arrow-back" size={24} color={colors.text} />
-                    </TouchableOpacity>
-                ) : (
-                    <View style={{ width: 40 }} />
-                )}
+            {isDark && (
+                <LinearGradient
+                    colors={['#1F0802', '#0D0200']}
+                    style={StyleSheet.absoluteFill}
+                />
+            )}
 
-                <Text style={styles.headerTitle}>{currentSlide.headerTitle}</Text>
-
-                {currentSlide.showHeaderHelp && (
-                    <TouchableOpacity style={styles.iconBtn}>
-                        <MaterialIcons name="help-outline" size={20} color={colors.text} />
-                    </TouchableOpacity>
-                )}
-
-                {currentSlide.showSkip && (
-                    <TouchableOpacity onPress={() => navigation.navigate('ModernAuthLanding')} style={styles.skipBtn}>
-                        <Text style={styles.skipText}>SKIP</Text>
-                    </TouchableOpacity>
-                )}
-
-                {!currentSlide.showHeaderHelp && !currentSlide.showSkip && (
-                    <View style={{ width: 40 }} />
-                )}
+            <View style={styles.topCurve}>
+                <LinearGradient
+                    colors={Gradients.glow}
+                    style={StyleSheet.absoluteFill}
+                />
             </View>
 
-            {/* Slides using ScrollView instead of FlatList for better web support */}
+            <View style={{ position: 'absolute', top: 60, width: '100%', alignItems: 'center', zIndex: 10 }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, textTransform: 'uppercase', letterSpacing: 2 }}>
+                    Lingualink <Text style={{ color: colors.primary }}>AI</Text>
+                </Text>
+            </View>
+
             <ScrollView
                 ref={scrollViewRef}
                 horizontal
@@ -126,149 +120,198 @@ export default function ModernOnboarding() {
                 showsHorizontalScrollIndicator={false}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
-                style={{ flex: 1 }}
                 contentContainerStyle={{ width: width * SLIDES.length }}
             >
-                {SLIDES.map((item, index) => (
-                    <View key={item.id} style={[styles.slide, { width }]}>
-                        <View style={styles.imageContainer}>
-                            <Image
-                                source={item.image}
-                                style={styles.heroImage}
-                                resizeMode="contain"
-                            />
-                            <View style={styles.glow} />
-                        </View>
-
-                        <View style={styles.textContainer}>
-                            <Text style={styles.headline}>
-                                {item.headline} <Text style={{ color: colors.primary }}>{item.highlight}</Text>
-                            </Text>
-                            <Text style={styles.body}>
-                                {item.body}
-                            </Text>
-
-                            {item.tag && (
-                                <View style={styles.tagContainer}>
-                                    <MaterialIcons name="verified" size={16} color={colors.primary} />
-                                    <Text style={styles.tagText}>{item.tag}</Text>
-                                </View>
-                            )}
-                        </View>
-                    </View>
+                {SLIDES.map((slide, index) => (
+                    <Slide key={slide.id} slide={slide} index={index} scrollX={scrollX} width={width} themeColors={colors} />
                 ))}
             </ScrollView>
 
             <View style={styles.footer}>
-                <View style={styles.dots}>
-                    {SLIDES.map((_, index) => (
-                        <TouchableOpacity
-                            key={index}
-                            onPress={() => goToSlide(index)}
-                            style={[
-                                styles.dot,
-                                currentIndex === index && styles.activeDot,
-                                { backgroundColor: currentIndex === index ? colors.primary : colors.border }
-                            ]}
-                        />
-                    ))}
+                <View style={styles.pagination}>
+                    {SLIDES.map((_, i) => {
+                        const dotStyle = useAnimatedStyle(() => {
+                            const dotWidth = interpolate(
+                                scrollX.value,
+                                [(i - 1) * width, i * width, (i + 1) * width],
+                                [10, 30, 10],
+                                Extrapolate.CLAMP
+                            );
+                            const opacity = interpolate(
+                                scrollX.value,
+                                [(i - 1) * width, i * width, (i + 1) * width],
+                                [0.3, 1, 0.3],
+                                Extrapolate.CLAMP
+                            );
+                            return { width: dotWidth, opacity };
+                        });
+                        return <Animated.View key={i} style={[styles.dot, dotStyle, { backgroundColor: colors.primary }]} />;
+                    })}
                 </View>
 
-                {/* Main Action Button */}
-                <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.btn, currentIndex === SLIDES.length - 1 && styles.btnGradient]}
-                    onPress={nextSlide}
-                >
-                    {currentIndex === SLIDES.length - 1 ? (
-                        <LinearGradient
-                            colors={[colors.primary, '#FFD700']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.gradientBtn}
-                        >
-                            <Text style={styles.btnText}>Get Started</Text>
-                            <MaterialIcons name="arrow-forward" size={20} color="white" />
-                        </LinearGradient>
-                    ) : (
-                        <View style={styles.nextBtnContent}>
-                            <Text style={styles.btnText}>Next</Text>
-                            <MaterialIcons name="arrow-forward" size={20} color="white" />
-                        </View>
-                    )}
+                <TouchableOpacity activeOpacity={0.9} onPress={nextSlide} style={[styles.nextButton, { shadowColor: colors.primary }]}>
+                    <LinearGradient
+                        colors={Gradients.primary}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.buttonGradient}
+                    >
+                        <Text style={styles.buttonText}>
+                            {currentIndex === SLIDES.length - 1 ? 'Get Started' : 'Next'}
+                        </Text>
+                        <MaterialIcons
+                            name={currentIndex === SLIDES.length - 1 ? 'rocket-launch' : 'arrow-forward'}
+                            size={20}
+                            color="white"
+                        />
+                    </LinearGradient>
                 </TouchableOpacity>
 
-                {/* Sign In Link */}
-                {currentIndex === 0 && (
-                    <TouchableOpacity onPress={() => navigation.navigate('ModernAuthLanding')} style={{ marginTop: 10 }}>
-                        <Text style={styles.subText}>Already have an account? <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Sign In</Text></Text>
-                    </TouchableOpacity>
-                )}
-                {currentIndex !== 0 && (
-                    <View style={{ height: 28 }} />
-                )}
+                <TouchableOpacity
+                    onPress={async () => {
+                        await AsyncStorage.setItem('HAS_SEEN_ONBOARDING', 'true');
+                        navigation.navigate('ModernAuthLanding');
+                    }}
+                    style={styles.skipContainer}
+                >
+                    <Text style={[styles.skipText, { color: colors.textMuted }]}>SKIP TO LOGIN</Text>
+                </TouchableOpacity>
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 
-const createStyles = (colors: any, width: number) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, height: 60 },
-    headerTitle: { color: colors.text, fontSize: 14, fontWeight: 'bold', letterSpacing: 1, textAlign: 'center', flex: 1 },
-    iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
-    skipBtn: { paddingHorizontal: 16, paddingVertical: 8 },
-    skipText: { color: colors.primary, fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
+const Slide = ({ slide, index, scrollX, width, themeColors }: any) => {
+    const animatedStyle = useAnimatedStyle(() => {
+        const opacity = interpolate(
+            scrollX.value,
+            [(index - 0.5) * width, index * width, (index + 0.5) * width],
+            [0, 1, 0],
+            Extrapolate.CLAMP
+        );
+        const scale = interpolate(
+            scrollX.value,
+            [(index - 1) * width, index * width, (index + 1) * width],
+            [0.8, 1, 0.8],
+            Extrapolate.CLAMP
+        );
+        return { opacity, transform: [{ scale }] };
+    });
 
-    slide: { flex: 1, justifyContent: 'space-between', paddingBottom: 10 },
+    return (
+        <View style={[styles.slide, { width }]}>
+            <Animated.View style={[styles.visualContainer, animatedStyle]}>
+                <View style={styles.iconCircle}>
+                    <Ionicons name={slide.icon} size={80} color={themeColors.primary} />
+                    <View style={[styles.iconGlow, { backgroundColor: themeColors.primary }]} />
+                </View>
+            </Animated.View>
 
-    imageContainer: { flex: 1.2, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-    heroImage: { width: width * 0.6, height: width * 0.6, zIndex: 10 },
-    glow: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: colors.primary, opacity: 0.1 },
+            <GlassCard style={styles.textCard} intensity={30} borderColor={themeColors.glassBorder}>
+                <Text style={[styles.title, { color: themeColors.text }]}>
+                    {slide.title} <Text style={{ color: themeColors.primary }}>{slide.highlight}</Text>
+                </Text>
+                <Text style={[styles.body, { color: themeColors.textSecondary }]}>{slide.content}</Text>
+            </GlassCard>
+        </View>
+    );
+};
 
-    textContainer: {
-        paddingHorizontal: 32,
-        alignItems: 'center',
-        gap: 12,
-        marginTop: 10,
-        justifyContent: 'flex-end',
-        flex: 0.8
+const styles = StyleSheet.create({
+    container: { flex: 1 },
+    topCurve: {
+        position: 'absolute',
+        top: -100,
+        left: 0,
+        right: 0,
+        height: 400,
+        opacity: 0.2,
     },
-    headline: { color: colors.text, fontSize: 28, fontWeight: '800', textAlign: 'center', lineHeight: 36 },
-    body: { color: colors.textSecondary, fontSize: 15, textAlign: 'center', lineHeight: 22, paddingBottom: 16 },
-
-    tagContainer: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        paddingHorizontal: 12, paddingVertical: 6,
-        borderRadius: 20, marginBottom: 16,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
-    },
-    tagText: { color: colors.textSecondary, fontSize: 10, letterSpacing: 1, fontWeight: 'bold' },
-
-    footer: { padding: 24, paddingBottom: 30, gap: 16, alignItems: 'center', justifyContent: 'flex-end' },
-    dots: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-    dot: { width: 10, height: 10, borderRadius: 5 },
-    activeDot: { width: 28 },
-
-    btn: {
-        backgroundColor: colors.primary,
-        height: 56, width: '100%',
-        borderRadius: 28,
-        overflow: 'hidden',
-        shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
-    },
-    nextBtnContent: {
+    slide: {
         flex: 1,
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
     },
-    btnGradient: {
-        backgroundColor: 'transparent',
+    visualContainer: {
+        height: 300,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    gradientBtn: {
-        flex: 1, width: '100%', height: '100%',
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    iconCircle: {
+        width: 180,
+        height: 180,
+        borderRadius: 90,
+        backgroundColor: 'rgba(255, 138, 0, 0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 138, 0, 0.2)',
     },
-    btnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-    subText: { color: colors.textSecondary, textAlign: 'center', fontSize: 14 }
+    iconGlow: {
+        position: 'absolute',
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        opacity: 0.1,
+        zIndex: -1,
+    },
+    textCard: {
+        padding: 32,
+        width: '100%',
+        marginTop: 20,
+    },
+    title: {
+        ...Typography.h1,
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    body: {
+        ...Typography.body,
+        textAlign: 'center',
+        lineHeight: 26,
+    },
+    footer: {
+        padding: 24,
+        paddingBottom: 40,
+        alignItems: 'center',
+    },
+    pagination: {
+        flexDirection: 'row',
+        height: 10,
+        marginBottom: 32,
+        gap: 8,
+    },
+    dot: {
+        height: 10,
+        borderRadius: 5,
+    },
+    nextButton: {
+        width: '100%',
+        height: 60,
+        borderRadius: 30,
+        overflow: 'hidden',
+        elevation: 8,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+    },
+    buttonGradient: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    buttonText: {
+        ...Typography.h3,
+        color: 'white',
+    },
+    skipContainer: {
+        marginTop: 20,
+    },
+    skipText: {
+        ...Typography.caption,
+        letterSpacing: 2,
+    }
 });

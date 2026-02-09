@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "259900102610",
+    "project_id": "lingualink-ai-1429c",
+    "storage_bucket": "lingualink-ai-1429c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:259900102610:android:24c22f37974de2ecbc1a0b",
+        "android_client_info": {
+          "package_name": "com.lingualink.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkwYwAUAZ2vZ1BGN492YxIehRaRdA0Bi0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

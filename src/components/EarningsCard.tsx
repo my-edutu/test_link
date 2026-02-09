@@ -50,7 +50,7 @@ export const EarningsCard: React.FC<EarningsCardProps> = ({ userId, onWithdrawPr
         setLoading(true);
         setError(null);
         try {
-            const data = await monetizationApi.getEarningsSummary(userId);
+            const data = await monetizationApi.getEarningsSummary();
             setEarnings(data);
 
             // Trigger pulse animation if balance > 0
@@ -102,6 +102,7 @@ export const EarningsCard: React.FC<EarningsCardProps> = ({ userId, onWithdrawPr
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                    {/* Top Up button hidden - backend code preserved for future premium features
                     <TouchableOpacity
                         style={[styles.withdrawButton, { marginTop: 0, backgroundColor: '#10B981' }]}
                         onPress={onTopUpPress}
@@ -109,6 +110,7 @@ export const EarningsCard: React.FC<EarningsCardProps> = ({ userId, onWithdrawPr
                         <Ionicons name="add-circle-outline" size={16} color="#FFF" />
                         <Text style={styles.withdrawText}>Top Up</Text>
                     </TouchableOpacity>
+                    */}
 
                     {earnings && earnings.balance >= 5 && (
                         <TouchableOpacity

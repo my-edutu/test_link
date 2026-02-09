@@ -1,91 +1,99 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { NavigationContainer, NavigationContainerRef, DefaultTheme, useNavigationContainerRef } from '@react-navigation/native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthProvider';
-import { ThemeProvider } from './src/context/ThemeContext'; // Import ThemeProvider
-import { OfflineProvider } from './src/context/OfflineProvider'; // Import OfflineProvider
-import { NotificationProvider } from './src/context/NotificationProvider'; // Import NotificationProvider
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { OfflineProvider } from './src/context/OfflineProvider';
+import { NotificationProvider, useNotifications } from './src/context/NotificationProvider';
 import InAppNotificationBanner from './src/components/InAppNotificationBanner';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, StyleSheet, ActivityIndicator, ScrollView, Dimensions, StatusBar, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
-import * as Device from 'expo-device';
-// import { deepLinkHandler } from './src/utils/deepLinking'; // No longer used; rely on Navigation linking prop
 import { supabase } from './src/supabaseClient';
+import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 // PostHog Analytics
-import { PostHogProvider } from 'posthog-react-native';
-import { initAnalytics, identifyUser, resetUser } from './src/services/analytics';
-
-// PostHog configuration
-const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '';
-const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com';
+import { PostHogProvider, PostHog } from 'posthog-react-native';
+import { setPostHogClient } from './src/services/analytics';
 
 // React Query imports for offline persistence
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Create a QueryClient with default options
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours - data stays in cache
-      staleTime: 1000 * 60 * 5, // 5 minutes - data considered fresh
-      retry: 2,
-      refetchOnWindowFocus: false,
-    },
-    mutations: {
-      retry: 1,
-    },
-  },
-});
-
-// Create persister for React Query cache
-const asyncStoragePersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-  key: 'LINGUALINK_QUERY_CACHE',
-});
-
 // Import all screens
-import WelcomeScreen from './src/screens/WelcomeScreen';
-import SignUpScreen from './src/screens/SignUpScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import SignUpScreen from './src/screens/SignUpScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import NewPasswordScreen from './src/screens/NewPasswordScreen';
-import EnhancedHomeScreen from './src/screens/EnhancedHomeScreen';
 import RecordVoiceScreen from './src/screens/RecordVoiceScreen';
 import RecordVideoScreen from './src/screens/RecordVideoScreen';
 import TellStoryScreen from './src/screens/TellStoryScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import RewardsScreen from './src/screens/RewardsScreen';
+import LeaderboardScreen from './src/screens/LeaderboardScreen';
+import StoreScreen from './src/screens/StoreScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import UserProfileScreen from './src/screens/UserProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import InvitesScreen from './src/screens/InvitesScreen';
 import ValidationScreen from './src/screens/ValidationScreen';
 import WithdrawalScreen from './src/screens/WithdrawalScreen';
-
-// Import new Chat screens
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatDetailScreen from './src/screens/ChatDetailScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import GroupChatScreen from './src/screens/GroupChatScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import SavedItemsScreen from './src/screens/SavedItemsScreen';
+import FAQScreen from './src/screens/FAQScreen';
 
-// LiveKit-dependent screens (require development build, won't work in Expo Go)
-// For Expo Go testing, comment these out and use NativeFeatureUnavailable placeholders
-import VoiceCallScreen from './src/screens/VoiceCallScreen';
-import VideoCallScreen from './src/screens/VideoCallScreen';
-import GroupCallScreen from './src/screens/GroupCallScreen';
-import LiveStreamingScreen from './src/screens/LiveStreamingScreen';
-import LiveViewerScreen from './src/screens/LiveViewerScreen';
+// Native call screens - Lazy loaded to prevent crashes in Expo Go
+import Constants from 'expo-constants';
+import NativeFeatureUnavailable from './src/screens/NativeFeatureUnavailable';
+import SplashScreen from './src/screens/SplashScreen';
+
+// Fallback component for native-only features in Expo Go
 
 
-// Import new feature screens
+const VoiceCallScreen = (props: any) => {
+  console.log('[App] Rendering VoiceCallScreen wrapper', { appOwnership: Constants.appOwnership });
+  if (Constants.appOwnership === 'expo') {
+    console.log('[App] Running in Expo Go, showing NativeOnlyFallback');
+    return <NativeFeatureUnavailable featureName="Voice Call" />;
+  }
+  console.log('[App] Running in native build, requiring VoiceCallScreen');
+  const Cmp = require('./src/screens/VoiceCallScreen').default;
+  return <Cmp {...props} />;
+};
+const VideoCallScreen = (props: any) => {
+  if (Constants.appOwnership === 'expo') return <NativeFeatureUnavailable featureName="Video Call" />;
+  const Cmp = require('./src/screens/VideoCallScreen').default;
+  return <Cmp {...props} />;
+};
+const GroupCallScreen = (props: any) => {
+  if (Constants.appOwnership === 'expo') return <NativeFeatureUnavailable featureName="Group Call" />;
+  const Cmp = require('./src/screens/GroupCallScreen').default;
+  return <Cmp {...props} />;
+};
+const LiveStreamingScreen = (props: any) => {
+  if (Constants.appOwnership === 'expo') return <NativeFeatureUnavailable featureName="Live Streaming" />;
+  const Cmp = require('./src/screens/LiveStreamingScreen').default;
+  return <Cmp {...props} />;
+};
+const LiveViewerScreen = (props: any) => {
+  if (Constants.appOwnership === 'expo') return <NativeFeatureUnavailable featureName="Live Viewer" />;
+  const Cmp = require('./src/screens/LiveViewerScreen').default;
+  return <Cmp {...props} />;
+};
+
 import TurnVerseScreen from './src/screens/TurnVerseScreen';
 import ContactDiscoveryScreen from './src/screens/ContactDiscoveryScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
@@ -96,17 +104,35 @@ import StoryViewScreen from './src/screens/StoryViewScreen';
 import LiveStreamSummaryScreen from './src/screens/LiveStreamSummaryScreen';
 import { DuetRecordScreen } from './src/screens/DuetRecordScreen';
 import { RemixHistoryScreen } from './src/screens/RemixHistoryScreen';
+import AdminModerationScreen from './src/screens/AdminModerationScreen';
+import PaymentSettingsScreen from './src/screens/PaymentSettingsScreen';
+import AdminPayoutScreen from './src/screens/AdminPayoutScreen';
 
-import ModernSplash from './src/screens/ModernSplash';
+
 import ModernOnboarding from './src/screens/ModernOnboarding';
 import ModernAuthLanding from './src/screens/ModernAuthLanding';
 import ModernProfileSetup from './src/screens/ModernProfileSetup';
 import ModernHomeScreen from './src/screens/ModernHomeScreen';
+import MenuScreen from './src/screens/MenuScreen';
+import * as ExpoSplashScreen from 'expo-splash-screen';
+import PermissionBridgeScreen from './src/screens/PermissionBridgeScreen';
 
+// CRITICAL: Prevent auto-hide so we can control it safely
+ExpoSplashScreen.preventAutoHideAsync().catch((e) => {
+  console.warn('[App] Failed to prevent auto-hide:', e);
+});
 
-// Import navigation types
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+// Also attempt an immediate hide in case the native side is already ready/stuck
+// This defines a "race" where we try to hide it ASAP if the JS bundle loads fast enough
+setTimeout(() => {
+  ExpoSplashScreen.hideAsync().catch(() => { });
+}, 500);
+
+// Navigation types
+import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+
+const { width } = Dimensions.get('window');
 
 // Define shared contact interface
 interface Contact {
@@ -138,6 +164,11 @@ interface Story {
   viewed: boolean;
 }
 
+import AmbassadorScreen from './src/screens/AmbassadorScreen';
+import IncomingCallScreen from './src/screens/IncomingCallScreen';
+import { CallProvider } from './src/context/CallProvider';
+import { CallSignal } from './src/services/callSignaling';
+
 export type RootStackParamList = {
   Welcome: undefined;
   SignUp: undefined;
@@ -149,91 +180,52 @@ export type RootStackParamList = {
   AuthCallback: { code?: string } | undefined;
   InterestSelection: undefined;
   MainTabs: undefined;
-  RecordVoice: {
-    mode?: 'record' | 'upload';
-    isDuet?: boolean;
-    originalClip?: {
-      id: string;
-      phrase: string;
-      user: string;
-      language: string;
-    };
-  } | undefined;
-  RecordVideo: {
-    mode?: 'record' | 'upload';
-    isDuet?: boolean;
-    originalClip?: {
-      id: string;
-      phrase: string;
-      user: string;
-      language: string;
-    };
-  } | undefined;
+  RecordVoice: { mode?: 'record' | 'upload'; isDuet?: boolean; originalClip?: any } | undefined;
+  RecordVideo: { mode?: 'record' | 'upload'; isDuet?: boolean; originalClip?: any } | undefined;
   TellStory: undefined;
   Settings: undefined;
-  UserProfile: {
-    userId: string;
-  };
-  Validation: {
-    clipId?: string;
-    language?: string;
-  } | undefined;
+  UserProfile: { userId: string };
+  Validation: { clipId?: string; language?: string } | undefined;
   Rewards: undefined;
+  Leaderboard: undefined;
+  Store: undefined;
   Withdrawal: undefined;
   RemixHistory: undefined;
-  DuetRecord: {
-    parentClipId: string;
-    parentUsername: string;
-    parentClipUrl?: string;
-    parentClipPhrase?: string;
-  };
-
-  // Chat routes
-  ChatDetail: {
-    contact: Contact;
-  };
-  VoiceCall: {
-    contact: Contact;
-  };
-  VideoCall: {
-    contact: Contact;
-  };
-  GroupChat: {
-    group: Group;
-  };
-  GroupCall: {
-    group: Group;
-  };
-
-  // New feature routes
+  DuetRecord: { parentClipId: string; parentUsername: string; parentClipUrl?: string; parentClipPhrase?: string };
+  ChatDetail: { contact: Contact; conversationId?: string };
+  VoiceCall: { contact: Contact };
+  VideoCall: { contact: Contact };
+  IncomingCall: { callSignal: CallSignal };
+  GroupChat: { group: Group };
+  GroupCall: { group: Group };
   TurnVerse: undefined;
   WordChain: undefined;
   StartLive: undefined;
-  LiveStream: {
-    isHost?: boolean;
-    roomId?: string;
-  };
-  LiveViewer: {
-    roomId: string;
-  };
-  LiveStreamSummary: {
-    summary: any;
-  };
+  LiveStream: { isHost?: boolean; roomId?: string };
+  LiveViewer: { roomId: string };
+  LiveStreamSummary: { summary: any };
   CreateGroup: undefined;
   CreateStory: undefined;
-  StoryView: {
-    story: Story;
-  };
+  StoryView: { story: Story };
   ContactDiscovery: undefined;
   Groups: undefined;
   Invites: undefined;
 
-  // Modern Flow
-  ModernSplash: undefined;
   ModernOnboarding: undefined;
   ModernAuthLanding: undefined;
   ModernProfileSetup: undefined;
   ModernHomeScreen: undefined;
+  PermissionBridge: undefined;
+  Library: undefined;
+  ChatList: undefined;
+  Profile: undefined;
+  AdminModeration: undefined;
+  PaymentSettings: undefined;
+  AdminPayout: undefined;
+  Notifications: undefined;
+  SavedItems: undefined;
+  FAQ: undefined;
+  Ambassador: { referralCode?: string } | undefined;
 };
 
 export type TabParamList = {
@@ -241,186 +233,96 @@ export type TabParamList = {
   Library: undefined;
   Create: undefined;
   Chat: undefined;
-  Profile: undefined;
+  Menu: undefined;
 };
-
-// Export navigation prop types for use in components
-export type RootStackScreenProps<T extends keyof RootStackParamList> =
-  NativeStackScreenProps<RootStackParamList, T>;
-
-export type TabScreenProps<T extends keyof TabParamList> =
-  BottomTabScreenProps<TabParamList, T>;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-// Create a context for the modal
 const CreateModalContext = React.createContext<{
   showCreateModal: boolean;
   setShowCreateModal: (show: boolean) => void;
+  navigation: any | null;
 }>({
   showCreateModal: false,
   setShowCreateModal: () => { },
+  navigation: null,
 });
 
-// Empty component for Create tab since we're using modal
-const CreateComponent = () => {
-  return <View />;
-};
-
-// Enhanced Create Modal Component
 const CreateModal = () => {
-  const navigation = useNavigation<any>();
-  const { showCreateModal, setShowCreateModal } = React.useContext(CreateModalContext);
+  const { showCreateModal, setShowCreateModal, navigation } = React.useContext(CreateModalContext);
+  const { colors, theme } = useTheme();
+
+  const modalStyles = useMemo(() => StyleSheet.create({
+    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    modalBackground: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.7)' },
+    content: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      paddingBottom: 40,
+      borderTopWidth: theme === 'dark' ? 1 : 0,
+      borderTopColor: colors.border,
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 24,
+      textAlign: 'center',
+    },
+    option: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    optionIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    optionTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 2 },
+    optionDesc: { fontSize: 14, color: colors.textSecondary, lineHeight: 18 },
+  }), [colors, theme]);
 
   return (
-    <Modal
-      visible={showCreateModal}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowCreateModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity
-          style={styles.modalBackground}
-          onPress={() => setShowCreateModal(false)}
-        />
-        <View style={styles.createModalContent}>
-          <Text style={styles.createModalTitle}>What would you like to create?</Text>
-
-          <ScrollView
-            style={styles.createModalScroll}
-            contentContainerStyle={styles.createModalScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('CreateStory');
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.blueIcon]}>
-                <Ionicons name="images" size={24} color="#3B82F6" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Create Story</Text>
-                <Text style={styles.createOptionDescription}>Combine clips, text and media</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('RecordVoice', { mode: 'record' });
-              }}
-            >
-              <View style={styles.createOptionIcon}>
-                <Ionicons name="mic" size={24} color="#FF8A00" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Record Audio</Text>
-                <Text style={styles.createOptionDescription}>Record audio in your local language</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('RecordVoice', { mode: 'upload' });
-              }}
-            >
-              <View style={styles.createOptionIcon}>
-                <Ionicons name="cloud-upload" size={24} color="#FF8A00" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Upload Audio</Text>
-                <Text style={styles.createOptionDescription}>Upload audio from your device</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('RecordVideo', { mode: 'record' });
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.purpleIcon]}>
-                <Ionicons name="videocam" size={24} color="#8B5CF6" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Record Video</Text>
-                <Text style={styles.createOptionDescription}>Record video content</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('RecordVideo', { mode: 'upload' });
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.purpleIcon]}>
-                <Ionicons name="cloud-upload" size={24} color="#8B5CF6" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Upload Video</Text>
-                <Text style={styles.createOptionDescription}>Upload video from your device</Text>
-              </View>
-            </TouchableOpacity>
-
-
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('LiveStream', { isHost: true });
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.redIcon]}>
-                <Ionicons name="radio" size={24} color="#EF4444" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Go Live</Text>
-                <Text style={styles.createOptionDescription}>Start live streaming</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('TurnVerse');
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.greenIcon]}>
-                <Ionicons name="game-controller" size={24} color="#10B981" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>Play TurnVerse</Text>
-                <Text style={styles.createOptionDescription}>Join language learning games</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.createOption}
-              onPress={() => {
-                setShowCreateModal(false);
-                navigation.navigate('Rewards');
-              }}
-            >
-              <View style={[styles.createOptionIcon, styles.blueIcon]}>
-                <Ionicons name="trophy" size={24} color="#3B82F6" />
-              </View>
-              <View style={styles.createOptionContent}>
-                <Text style={styles.createOptionTitle}>View Rewards</Text>
-                <Text style={styles.createOptionDescription}>Check leaderboard and rewards</Text>
-              </View>
-            </TouchableOpacity>
+    <Modal visible={showCreateModal} transparent animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
+      <View style={modalStyles.modalOverlay}>
+        <TouchableOpacity style={modalStyles.modalBackground} onPress={() => setShowCreateModal(false)} />
+        <View style={modalStyles.content}>
+          <Text style={modalStyles.title}>What would you like to create?</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {[
+              { title: 'Create Story', desc: 'Combine clips, text and media', icon: 'images', color: '#3B82F6', route: 'CreateStory' },
+              { title: 'Record Audio', desc: 'Record audio in your local language', icon: 'mic', color: '#FF8A00', route: 'RecordVoice', params: { mode: 'record' } },
+              { title: 'Upload Audio', desc: 'Upload audio from your device', icon: 'cloud-upload', color: '#FF8A00', route: 'RecordVoice', params: { mode: 'upload' } },
+              { title: 'Record Video', desc: 'Record video content', icon: 'videocam', color: '#8B5CF6', route: 'RecordVideo', params: { mode: 'record' } },
+              { title: 'Go Live', desc: 'Start live streaming', icon: 'radio', color: '#EF4444', route: 'LiveStream', params: { isHost: true } },
+              { title: 'Play TurnVerse', desc: 'Join language learning games', icon: 'game-controller', color: '#10B981', route: 'TurnVerse' },
+            ].map((opt, i) => (
+              <TouchableOpacity
+                key={i}
+                style={modalStyles.option}
+                onPress={() => { setShowCreateModal(false); navigation?.navigate(opt.route, opt.params); }}
+              >
+                <View style={[modalStyles.optionIcon, { backgroundColor: opt.color + '20' }]}>
+                  <Ionicons name={opt.icon as any} size={24} color={opt.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={modalStyles.optionTitle}>{opt.title}</Text>
+                  <Text style={modalStyles.optionDesc}>{opt.desc}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
         </View>
       </View>
@@ -430,126 +332,113 @@ const CreateModal = () => {
 
 const MainTabs = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
-  const [unreadTotal, setUnreadTotal] = useState<number>(0);
+  const { colors, theme } = useTheme();
+  // Use global notification context
+  const { unreadMessages } = useNotifications();
+  const insets = useSafeAreaInsets();
 
-  // Compute unread badge count using RPC and keep it updated via realtime
-  useEffect(() => {
-    let mounted = true;
-    const fetchUnread = async () => {
-      if (!user?.id) return;
-      try {
-        const { data, error } = await supabase.rpc('get_conversations_with_unread');
-        if (!mounted) return;
-        if (error) return;
-        const total = (data || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
-        setUnreadTotal(total);
-      } catch { }
-    };
-    fetchUnread();
-    const channel = supabase
-      .channel('tabs-unread')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
-        const m = payload.new;
-        if (m.sender_id !== user?.id) {
-          setUnreadTotal(prev => prev + 1);
-        }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads' }, (payload: any) => {
-        const r = payload.new;
-        if (r.user_id === user?.id) {
-          setUnreadTotal(prev => Math.max(0, prev - 1));
-        }
-      })
-      .subscribe();
-    return () => { mounted = false; channel.unsubscribe(); };
-  }, [user?.id]);
+  const triggerHaptic = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
 
   return (
-    <CreateModalContext.Provider value={{ showCreateModal, setShowCreateModal }}>
+    <CreateModalContext.Provider value={{ showCreateModal, setShowCreateModal, navigation }}>
       <Tab.Navigator
-        key={user?.id || 'tabs'}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap;
+            let iconName: any = focused ? 'home' : 'home-outline';
+            if (route.name === 'Library') iconName = focused ? 'library' : 'library-outline';
+            else if (route.name === 'Create') iconName = 'add';
+            else if (route.name === 'Chat') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+            else if (route.name === 'Menu') iconName = focused ? 'menu' : 'menu-outline';
 
-            if (route.name === 'Home') {
-              iconName = focused ? 'home' : 'home-outline';
-            } else if (route.name === 'Library') {
-              iconName = focused ? 'library' : 'library-outline';
-            } else if (route.name === 'Create') {
-              iconName = 'add';
-            } else if (route.name === 'Chat') {
-              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-            } else if (route.name === 'Profile') {
-              iconName = focused ? 'person' : 'person-outline';
-            } else {
-              iconName = 'home-outline';
-            }
-
-            if (route.name === 'Create') {
-              return (
-                <View style={styles.createTabIcon}>
-                  <Ionicons name={iconName} size={24} color="white" />
-                </View>
-              );
-            }
-
-            return <Ionicons name={iconName} size={size} color={color} />;
+            return <Ionicons name={iconName} size={28} color={color} />;
           },
-          tabBarActiveTintColor: '#FF8A00',
-          tabBarInactiveTintColor: '#999',
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textSecondary,
+          tabBarShowLabel: false,
           tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopColor: '#E5E5E5',
-            height: 80,
-            paddingBottom: 20,
-            paddingTop: 10,
+            backgroundColor: colors.background,
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
+            height: 60 + insets.bottom,
+            paddingBottom: insets.bottom,
           },
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '500',
-          },
-        })}
-        screenListeners={({ navigation }) => ({
-          tabPress: (e) => {
-            if (e.target?.includes('Create')) {
-              e.preventDefault();
-              setShowCreateModal(true);
-            }
-          },
+          tabBarBackground: undefined,
         })}
       >
         <Tab.Screen
           name="Home"
-          component={EnhancedHomeScreen}
-          options={{ tabBarLabel: 'Home' }}
+          component={ModernHomeScreen}
+          listeners={{
+            tabPress: () => triggerHaptic(),
+          }}
         />
         <Tab.Screen
           name="Library"
-          component={LibraryScreen}
-          options={{ tabBarLabel: 'Library' }}
+          component={View}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              triggerHaptic();
+              navigation.navigate('Library');
+            },
+          }}
         />
         <Tab.Screen
           name="Create"
-          component={CreateComponent}
+          component={View}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+              }
+              setShowCreateModal(true);
+            },
+          }}
           options={{
-            tabBarLabel: '',
+            tabBarIcon: ({ focused }) => (
+              <View style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: colors.primary,
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 4,
+                elevation: 4,
+                shadowColor: colors.primary,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+              }}>
+                <Ionicons name="add" size={30} color="#FFFFFF" />
+              </View>
+            ),
+            tabBarLabel: () => null,
           }}
         />
         <Tab.Screen
           name="Chat"
           component={ChatListScreen}
-          options={{
-            tabBarLabel: 'Chat',
-            tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
+          options={{ tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined }}
+          listeners={{
+            tabPress: () => triggerHaptic(),
           }}
         />
         <Tab.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{ tabBarLabel: 'Profile' }}
+          name="Menu"
+          component={MenuScreen}
+          listeners={{
+            tabPress: () => triggerHaptic(),
+          }}
         />
       </Tab.Navigator>
       <CreateModal />
@@ -557,580 +446,348 @@ const MainTabs = () => {
   );
 };
 
-const AuthStack = () => (
-  <Stack.Navigator initialRouteName="ModernSplash" screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="ModernSplash" component={ModernSplash} />
-    <Stack.Screen name="ModernOnboarding" component={ModernOnboarding} options={{ animation: 'fade' }} />
-    <Stack.Screen name="ModernAuthLanding" component={ModernAuthLanding} options={{ animation: 'slide_from_right' }} />
-
-    {/* Legacy/Functional Auth Screens */}
-    <Stack.Screen name="Welcome" component={WelcomeScreen} />
-    <Stack.Screen name="SignUp" component={SignUpScreen} options={{ animation: 'slide_from_right' }} />
-    <Stack.Screen name="SignIn" component={SignInScreen} options={{ animation: 'slide_from_right' }} />
-    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ animation: 'slide_from_right' }} />
-    <Stack.Screen name="NewPassword" component={NewPasswordScreen} options={{ animation: 'slide_from_right' }} />
-    <Stack.Screen name="AuthCallback" component={AuthCallbackScreen} options={{ animation: 'fade' }} />
-    <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} options={{ animation: 'slide_from_right' }} />
-  </Stack.Navigator>
-);
-
-const MainStack = ({ initialRouteName = 'MainTabs' as keyof RootStackParamList }: { initialRouteName?: keyof RootStackParamList }) => (
-  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
-    <Stack.Screen
-      name="MainTabs"
-      component={MainTabs}
-      options={{
-        gestureEnabled: false,
-        animation: 'fade',
-      }}
-    />
-    <Stack.Screen
-      name="InterestSelection"
-      component={InterestSelectionScreen}
-      options={{ animation: 'slide_from_right' }}
-    />
-    <Stack.Screen
-      name="ModernProfileSetup"
-      component={ModernProfileSetup}
-      options={{ animation: 'slide_from_right' }}
-    />
-
-    {/* Content Creation Screens */}
-    <Stack.Screen
-      name="RecordVoice"
-      component={RecordVoiceScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-      }}
-    />
-    <Stack.Screen
-      name="RecordVideo"
-      component={RecordVideoScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-      }}
-    />
-    <Stack.Screen
-      name="TellStory"
-      component={TellStoryScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-      }}
-    />
-
-    {/* Validation Screen */}
-    <Stack.Screen
-      name="Validation"
-      component={ValidationScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-
-    {/* Settings Screen */}
-    <Stack.Screen
-      name="Settings"
-      component={SettingsScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-
-    <Stack.Screen
-      name="Invites"
-      component={InvitesScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-
-
-
-
-    {/* Finance Screens */}
-    <Stack.Screen
-      name="Withdrawal"
-      component={WithdrawalScreen}
-      options={{
-        animation: 'slide_from_right',
-        headerShown: false
-      }}
-    />
-
-    {/* Rewards Screen */}
-    <Stack.Screen
-      name="Rewards"
-      component={RewardsScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen
-      name="RemixHistory"
-      component={RemixHistoryScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen
-      name="DuetRecord"
-      component={DuetRecordScreen}
-      options={{
-        presentation: 'modal',
-        animation: 'slide_from_bottom',
-      }}
-    />
-
-    {/* Chat Screens */}
-    <Stack.Screen
-      name="Groups"
-      component={GroupsScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen
-      name="ChatDetail"
-      component={ChatDetailScreen}
-      options={{
-        animation: 'slide_from_right',
-        headerShown: true,
-      }}
-    />
-    <Stack.Screen
-      name="GroupChat"
-      component={GroupChatScreen}
-      options={{
-        animation: 'slide_from_right',
-        headerShown: true,
-      }}
-    />
-    <Stack.Screen
-      name="VoiceCall"
-      component={VoiceCallScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="VideoCall"
-      component={VideoCallScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="GroupCall"
-      component={GroupCallScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-
-    {/* Games and Entertainment */}
-    <Stack.Screen
-      name="TurnVerse"
-      component={TurnVerseScreen}
-      options={{
-        animation: 'slide_from_right',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="WordChain"
-      component={TurnVerseScreen} // Can reuse or create separate WordChainScreen
-      options={{
-        animation: 'slide_from_right',
-        headerShown: false,
-      }}
-    />
-
-    {/* Live Streaming */}
-    <Stack.Screen
-      name="StartLive"
-      component={LiveStreamingScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="LiveStream"
-      component={LiveStreamingScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="LiveViewer"
-      component={LiveViewerScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-    <Stack.Screen
-      name="LiveStreamSummary"
-      component={LiveStreamSummaryScreen}
-      options={{
-        animation: 'fade',
-        headerShown: false,
-      }}
-    />
-
-    {/* Social Features */}
-    <Stack.Screen
-      name="ContactDiscovery"
-      component={ContactDiscoveryScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-    <Stack.Screen
-      name="UserProfile"
-      component={UserProfileScreen}
-      options={{
-        animation: 'slide_from_right',
-      }}
-    />
-
-    {/* Story Features */}
-    <Stack.Screen
-      name="CreateStory"
-      component={CreateStoryScreen}
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-      }}
-    />
-    <Stack.Screen
-      name="StoryView"
-      component={StoryViewScreen}
-      options={{
-        animation: 'fade',
-        presentation: 'fullScreenModal',
-        headerShown: false,
-      }}
-    />
-
-    {/* Group Management */}
-    <Stack.Screen
-      name="CreateGroup"
-      component={ContactDiscoveryScreen} // Can create separate CreateGroupScreen
-      options={{
-        animation: 'slide_from_bottom',
-        presentation: 'modal',
-      }}
-    />
-  </Stack.Navigator>
-);
-
-
-
-
 const AuthGate = () => {
-  const { session, loading } = useAuth();
-  const [checking, setChecking] = React.useState(false);
-  const [onboardingComplete, setOnboardingComplete] = React.useState<boolean | null>(null);
+  const { session, loading, supabaseSynced, profileVersion } = useAuth();
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  const [hasSeenSlides, setHasSeenSlides] = useState<boolean | null>(null);
 
-  const checkOnboarding = React.useCallback(async () => {
-    if (!session) {
-      setOnboardingComplete(null);
-      return;
-    }
-    setChecking(true);
-    console.log('AuthGate: Starting onboarding check for user', session.user.id);
+  useEffect(() => {
+    const checkSlides = async () => {
+      const seen = await AsyncStorage.getItem('HAS_SEEN_ONBOARDING');
+      setHasSeenSlides(seen === 'true');
+    };
+    checkSlides();
+  }, []);
 
-    try {
-      // Direct query. If it fails or is slow, the user will just see onboarding again
-      // which is a better UX than a timeout crash.
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('has_completed_onboarding, interests')
-        .eq('id', session.user.id)
-        .maybeSingle();
+  useEffect(() => {
+    if (!session || loading || !supabaseSynced) return;
+    const check = async () => {
+      try {
+        let { data } = await supabase.from('profiles').select('has_completed_onboarding, interests').eq('id', session.user.id).maybeSingle();
 
-      if (error || !data) {
-        console.log('AuthGate: No profile or error, defaulting to "Started"');
-        setOnboardingComplete(false);
-        return;
-      }
-
-      const isComplete = data.has_completed_onboarding === true ||
-        (data.interests && Array.isArray(data.interests) && data.interests.length > 0);
-
-      console.log('AuthGate: Check result:', isComplete);
-      setOnboardingComplete(isComplete);
-    } catch (e: any) {
-      console.error('AuthGate: Onboarding check caught error:', e);
-      setOnboardingComplete(false);
-    } finally {
-      setChecking(false);
-    }
-  }, [session]);
-
-  React.useEffect(() => {
-    if (session && !loading) {
-      checkOnboarding();
-    }
-  }, [session, loading, checkOnboarding]);
-
-
-  // Listen for changes to the profiles table to detect when onboarding is completed
-  React.useEffect(() => {
-    if (!session) return;
-
-    const subscription = supabase
-      .channel('profiles-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${session.user.id}`,
-        },
-        (payload) => {
-          console.log('Profile updated:', payload);
-          if (payload.new.has_completed_onboarding === true) {
-            setOnboardingComplete(true);
+        // If not found, try to migrate old user (legacy Supabase ID -> Clerk ID)
+        if (!data) {
+          const email = session.user.primaryEmailAddress?.emailAddress;
+          if (email) {
+            console.log("AuthGate: Profile not found, attempting migration for:", email);
+            const { data: success } = await supabase.rpc('migrate_clerk_user', { user_email: email });
+            if (success) {
+              console.log("AuthGate: Migration successful!");
+              // Fetch again with new ID
+              const res = await supabase.from('profiles').select('has_completed_onboarding, interests').eq('id', session.user.id).maybeSingle();
+              data = res.data as any;
+            }
           }
         }
-      )
+
+        setOnboardingComplete(!!(data?.has_completed_onboarding || (data?.interests?.length > 0)));
+      } catch (e) {
+        console.warn("AuthGate: Profile check failed", e);
+        setOnboardingComplete(false); // Fallback
+      }
+    };
+    check();
+
+    // Listen for profile updates (e.g. finishing onboarding)
+    const channel = supabase.channel(`profile-gate-${session.user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${session.user.id}`
+      }, (payload) => {
+        const newData = payload.new as { has_completed_onboarding?: boolean; interests?: string[] } | null;
+        if (newData && (newData.has_completed_onboarding || (newData.interests && newData.interests.length > 0))) {
+          setOnboardingComplete(true);
+        }
+      })
       .subscribe();
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [session]);
+    return () => { supabase.removeChannel(channel); };
+  }, [session, loading, supabaseSynced, profileVersion]);
 
-  if (loading || (session && (checking || onboardingComplete === null))) {
+  // Debug logging for blank screen issues
+  console.log('[AuthGate] State:', {
+    loading,
+    hasSession: !!session,
+    onboardingComplete,
+    supabaseSynced,
+    hasSeenSlides
+  });
+
+  if (loading || (session && (onboardingComplete === null || !supabaseSynced)) || (!session && hasSeenSlides === null)) {
+    console.log('[AuthGate] Showing loading state because:', {
+      authLoading: loading,
+      waitingForOnboarding: session && onboardingComplete === null,
+      waitingForSupabaseSync: session && !supabaseSynced,
+      waitingForSlideCheck: !session && hasSeenSlides === null
+    });
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
         <ActivityIndicator size="large" color="#FF8A00" />
-        <Text style={{ marginTop: 12, color: '#6B7280' }}>Loading...</Text>
       </View>
     );
   }
 
-  // No session → auth flow
   if (!session) {
-    return <AuthStack key="auth" />;
+    if (hasSeenSlides) {
+      return <Stack.Navigator screenOptions={{ headerShown: false }}><Stack.Screen name="ModernAuthLanding" component={ModernAuthLanding} /><Stack.Screen name="SignIn" component={SignInScreen} /><Stack.Screen name="SignUp" component={SignUpScreen} /></Stack.Navigator>;
+    }
+    return <Stack.Navigator screenOptions={{ headerShown: false }}><Stack.Screen name="ModernOnboarding" component={ModernOnboarding} /><Stack.Screen name="ModernAuthLanding" component={ModernAuthLanding} /><Stack.Screen name="SignIn" component={SignInScreen} /><Stack.Screen name="SignUp" component={SignUpScreen} /></Stack.Navigator>;
   }
 
-  // Session present; route based on onboarding
-  if (onboardingComplete === false) {
-    // Use ModernProfileSetup as the new interest/setup screen
-    return <MainStack initialRouteName="ModernProfileSetup" />;
-  }
-
-  // Onboarding complete → main app
-  return <MainStack key={session.user?.id || 'main'} />;
-};
-
-
-export default function App() {
-  const navigationRef = useRef<NavigationContainerRef<any>>(null);
-  const [navigationReady, setNavigationReady] = useState(false);
-  const [analyticsReady, setAnalyticsReady] = useState(false);
-
-  // Initialize PostHog analytics on app start
-  useEffect(() => {
-    const setupAnalytics = async () => {
-      if (POSTHOG_API_KEY) {
-        await initAnalytics(POSTHOG_API_KEY, POSTHOG_HOST);
-        setAnalyticsReady(true);
-        console.log('[App] PostHog analytics initialized');
-      } else {
-        console.warn('[App] PostHog API key not configured');
-        setAnalyticsReady(true); // Continue without analytics
-      }
-    };
-
-    setupAnalytics();
-  }, []);
-
-  // Deep linking configuration
-  const linking = {
-    prefixes: ['exp://', 'exp+lingualink://', 'lingualink://'],
-    config: {
-      screens: {
-        Welcome: 'welcome',
-        SignUp: 'signup',
-        SignIn: 'signin',
-        ForgotPassword: 'forgot-password',
-        NewPassword: 'new-password',
-        VerifyEmail: 'verify-email',
-        AuthCallback: 'auth-callback',
-        InterestSelection: 'interests',
-        MainTabs: {
-          path: 'main',
-          screens: {
-            Home: 'home',
-            Library: 'library',
-            Chat: 'chat',
-            Profile: 'profile',
-          },
-        },
-        RecordVoice: 'record-voice',
-        RecordVideo: 'record-video',
-        TellStory: 'tell-story',
-        Validation: 'validation',
-        Settings: 'settings',
-        Rewards: 'wallet',
-        Groups: 'groups',
-        ChatDetail: 'chat/:id',
-        GroupChat: 'group/:id',
-        VoiceCall: 'call/voice/:id',
-        VideoCall: 'call/video/:id',
-        GroupCall: 'call/group/:id',
-        TurnVerse: 'games/turnverse',
-        LiveStream: 'live/:roomId',
-        ContactDiscovery: 'discover',
-        UserProfile: 'user/:userId',
-      },
-    },
-  };
+  if (onboardingComplete === false) return <Stack.Navigator screenOptions={{ headerShown: false }}><Stack.Screen name="PermissionBridge" component={PermissionBridgeScreen} /><Stack.Screen name="ModernProfileSetup" component={ModernProfileSetup} /></Stack.Navigator>;
 
   return (
-    <SafeAreaProvider>
-      <PostHogProvider
-        apiKey={POSTHOG_API_KEY || 'disabled'}
-        options={{
-          host: POSTHOG_HOST,
-          disabled: !POSTHOG_API_KEY,
-        }}
-        autocapture={POSTHOG_API_KEY ? true : false}
-      >
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{ persister: asyncStoragePersister }}
-        >
-          <ThemeProvider>
-            <AuthProvider>
-              <OfflineProvider>
-                <NavigationContainer
-                  ref={navigationRef}
-                  linking={linking}
-                  onReady={() => setNavigationReady(true)}
-                >
-                  <NotificationProvider>
-                    <AuthGate />
-                    <InAppNotificationBanner />
-                  </NotificationProvider>
-                </NavigationContainer>
-              </OfflineProvider>
-            </AuthProvider>
-          </ThemeProvider>
-        </PersistQueryClientProvider>
-      </PostHogProvider>
-    </SafeAreaProvider>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="Library" component={LibraryScreen} />
+
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="RecordVoice" component={RecordVoiceScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="RecordVideo" component={RecordVideoScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="TurnVerse" component={TurnVerseScreen} />
+      <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{ headerShown: true }} />
+
+      {/* Monetization & Rewards */}
+      <Stack.Screen name="Validation" component={ValidationScreen} />
+      <Stack.Screen name="Rewards" component={RewardsScreen} />
+      <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
+      <Stack.Screen name="Store" component={StoreScreen} />
+      <Stack.Screen name="Withdrawal" component={WithdrawalScreen} />
+      <Stack.Screen name="RemixHistory" component={RemixHistoryScreen} />
+      <Stack.Screen name="DuetRecord" component={DuetRecordScreen} />
+
+      {/* Communications */}
+      <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
+      <Stack.Screen name="VideoCall" component={VideoCallScreen} />
+      <Stack.Screen name="IncomingCall" component={IncomingCallScreen} options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
+      <Stack.Screen name="GroupCall" component={GroupCallScreen} />
+      <Stack.Screen name="LiveStream" component={LiveStreamingScreen} />
+      <Stack.Screen name="LiveViewer" component={LiveViewerScreen} />
+      <Stack.Screen name="LiveStreamSummary" component={LiveStreamSummaryScreen} />
+
+      {/* Social & Discovery */}
+      <Stack.Screen name="ContactDiscovery" component={ContactDiscoveryScreen} />
+      <Stack.Screen name="Groups" component={GroupsScreen} />
+      <Stack.Screen name="GroupChat" component={GroupChatScreen} />
+      <Stack.Screen name="CreateStory" component={CreateStoryScreen} />
+      <Stack.Screen name="StoryView" component={StoryViewScreen} />
+      <Stack.Screen name="TellStory" component={TellStoryScreen} />
+      <Stack.Screen name="Invites" component={InvitesScreen} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+      <Stack.Screen name="AdminModeration" component={AdminModerationScreen} />
+      <Stack.Screen name="PaymentSettings" component={PaymentSettingsScreen} />
+      <Stack.Screen name="AdminPayout" component={AdminPayoutScreen} />
+
+      {/* Menu Screens */}
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="SavedItems" component={SavedItemsScreen} />
+      <Stack.Screen name="FAQ" component={FAQScreen} />
+      <Stack.Screen name="Ambassador" component={AmbassadorScreen} />
+    </Stack.Navigator>
   );
+};
+
+const InnerApp = () => {
+  const { theme, colors } = useTheme();
+  const [isSplashFinished, setIsSplashFinished] = useState(false);
+  const navigationRef = useNavigationContainerRef();
+
+  return (
+    <NavigationContainer
+      ref={navigationRef}
+      theme={{
+        dark: theme === 'dark',
+        colors: {
+          primary: colors.primary,
+          background: colors.background,
+          card: colors.card,
+          text: colors.text,
+          border: colors.border,
+          notification: colors.notification
+        },
+        fonts: DefaultTheme.fonts,
+      }}
+    >
+      <NotificationProvider navigationRef={navigationRef}>
+        <CallProvider navigationRef={navigationRef}>
+          <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+          <AuthGate />
+          {!isSplashFinished && <SplashScreen onFinish={() => setIsSplashFinished(true)} />}
+          <InAppNotificationBanner navigationRef={navigationRef} />
+        </CallProvider>
+      </NotificationProvider>
+    </NavigationContainer>
+  );
+};
+
+const queryClient = new QueryClient();
+const asyncStoragePersister = createAsyncStoragePersister({ storage: AsyncStorage });
+
+const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '';
+const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com';
+
+// Safely initialize PostHog - don't crash if API key is missing
+let posthog: PostHog;
+try {
+  if (!POSTHOG_API_KEY || POSTHOG_API_KEY.includes('placeholder')) {
+    console.warn('[App] PostHog API key not configured - analytics disabled');
+    // Create dummy client that won't send events
+    posthog = new PostHog('ph_disabled', { host: POSTHOG_HOST, disabled: true });
+  } else {
+    posthog = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
+  }
+  setPostHogClient(posthog);
+} catch (error) {
+  console.error('[App] PostHog initialization failed:', error);
+  // Create fallback client
+  posthog = new PostHog('ph_error', { host: POSTHOG_HOST, disabled: true });
 }
 
-const styles = StyleSheet.create({
-  createTabIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#FF8A00',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#FF8A00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  createModalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 16,
-  },
-  createModalScroll: {
-    maxHeight: 520,
-  },
-  createModalScrollContent: {
-    paddingBottom: 24,
-  },
-  createModalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  createOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  createOptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FEF3E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  purpleIcon: {
-    backgroundColor: '#F3E8FF',
-  },
-  greenIcon: {
-    backgroundColor: '#ECFDF5',
-  },
-  redIcon: {
-    backgroundColor: '#FEE2E2',
-  },
-  blueIcon: {
-    backgroundColor: '#EFF6FF',
-  },
-  createOptionContent: {
-    flex: 1,
-  },
-  createOptionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  createOptionDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 18,
-  },
-});
+export { posthog };
+
+import { ClerkProvider, useAuth as useClerkAuth } from '@clerk/clerk-expo';
+import { tokenCache } from './src/utils/tokenCache';
+
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+// Validate Clerk key at module load to provide better error message
+if (!CLERK_PUBLISHABLE_KEY) {
+  console.error('[App] CRITICAL: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set!');
+}
+
+// Safely wait for Clerk with timeout fallback
+const ClerkLoadedWithTimeout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isLoaded } = useClerkAuth();
+  const [timedOut, setTimedOut] = useState(false);
+  const [showRetry, setShowRetry] = useState(false);
+
+  useEffect(() => {
+    console.log('[ClerkLoadedWithTimeout] isLoaded:', isLoaded);
+    if (isLoaded) return;
+
+    // Show loading for max 10 seconds, then show error
+    const timeout = setTimeout(() => {
+      console.warn('[ClerkLoadedWithTimeout] Clerk failed to load within 10s');
+      setTimedOut(true);
+    }, 10000);
+
+    return () => clearTimeout(timeout);
+  }, [isLoaded]);
+
+  if (isLoaded) {
+    return <>{children}</>;
+  }
+
+  if (timedOut) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', padding: 20 }}>
+        <Text style={{ color: '#FF8A00', fontSize: 24, fontWeight: 'bold', marginBottom: 10 }}>Connection Issue</Text>
+        <Text style={{ color: '#FFF', fontSize: 16, textAlign: 'center', marginBottom: 20 }}>
+          Unable to connect to authentication service. Please check your internet connection and try again.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#FF8A00', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 25 }}
+          onPress={() => {
+            setTimedOut(false);
+            setShowRetry(true);
+            // Force re-render after 100ms
+            setTimeout(() => setShowRetry(false), 100);
+          }}
+        >
+          <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '600' }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Show loading spinner while waiting for Clerk
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+      <ActivityIndicator size="large" color="#FF8A00" />
+      <Text style={{ color: '#FFF', marginTop: 16, fontSize: 14 }}>Loading...</Text>
+    </View>
+  );
+};
+
+export default function App() {
+  useEffect(() => {
+    // Register LiveKit globals after native modules are ready
+    const initLiveKit = async () => {
+      try {
+        const { registerGlobals } = await import('@livekit/react-native');
+        registerGlobals();
+      } catch (e) {
+        console.warn('LiveKit initialization skipped:', e);
+      }
+    };
+    initLiveKit();
+
+    async function prepare() {
+      try {
+        // SAFETY: Force splash screen to hide after 3s max, even if initialization hangs
+        // This prevents the "stuck on splash screen" issue if SyncManager or other services deadlock
+        const safetyTimeout = new Promise((resolve) => setTimeout(resolve, 3000));
+
+        // await other initialization tasks here if needed in the future
+        // e.g. await Font.loadAsync(...)
+
+        // Race between normal initialization and safety timeout
+        await Promise.race([
+          Promise.resolve(), // Add actual async init tasks here in the future
+          safetyTimeout
+        ]);
+      } catch (e) {
+        console.warn('[App] Initialization error:', e);
+      } finally {
+        // ALWAYS hide splash screen
+        console.log('[App] Hiding splash screen (prepare finished)');
+        await ExpoSplashScreen.hideAsync().catch((e) => {
+          console.warn('[App] Failed to hide splash screen:', e);
+        });
+      }
+    }
+    prepare();
+  }, []);
+
+  // Show error screen if Clerk key is missing
+  if (!CLERK_PUBLISHABLE_KEY) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', padding: 20 }}>
+        <Text style={{ color: '#FF3B30', fontSize: 24, fontWeight: 'bold', marginBottom: 10 }}>Configuration Error</Text>
+        <Text style={{ color: '#FFF', fontSize: 16, textAlign: 'center', marginBottom: 20 }}>
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. Please check your environment configuration.
+        </Text>
+        <Text style={{ color: '#999', fontSize: 12, textAlign: 'center' }}>
+          This error occurs when the app is built without required environment variables.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+          <ClerkLoadedWithTimeout>
+            <SafeAreaProvider>
+              <PostHogProvider client={posthog}>
+                <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: asyncStoragePersister }}>
+                  <ThemeProvider>
+                    <AuthProvider>
+                      <OfflineProvider>
+                        <InnerApp />
+                      </OfflineProvider>
+                    </AuthProvider>
+                  </ThemeProvider>
+                </PersistQueryClientProvider>
+              </PostHogProvider>
+            </SafeAreaProvider>
+          </ClerkLoadedWithTimeout>
+        </ClerkProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
+  );
+}

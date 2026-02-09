@@ -11,6 +11,7 @@ import {
     NewFollowerEvent,
     ValidationReceivedEvent,
     BadgeEarnedEvent,
+    LikeReceivedEvent,
     DEEP_LINK_SCREENS,
 } from './notification.events';
 
@@ -18,7 +19,7 @@ import {
 export class NotificationListener {
     private readonly logger = new Logger(NotificationListener.name);
 
-    constructor(private notificationService: NotificationService) {}
+    constructor(private notificationService: NotificationService) { }
 
     @OnEvent(NOTIFICATION_EVENTS.CLIP_APPROVED)
     async handleClipApproved(event: ClipApprovedEvent): Promise<void> {
@@ -157,6 +158,31 @@ export class NotificationListener {
                 badgeId: event.badgeId,
             },
             category: 'reward',
+        });
+    }
+
+    @OnEvent(NOTIFICATION_EVENTS.LIKE_RECEIVED)
+    async handleLikeReceived(event: LikeReceivedEvent): Promise<void> {
+        this.logger.log(`Like received event for user ${event.userId}`);
+
+        const typeMap = {
+            voice_clip: 'voice clip',
+            video_clip: 'video',
+            story: 'story',
+            comment: 'comment',
+        };
+
+        const itemType = typeMap[event.targetType] || 'post';
+
+        await this.notificationService.sendToUser({
+            userId: event.userId,
+            title: 'New Like ❤️',
+            body: `${event.senderName} liked your ${itemType}`,
+            data: {
+                screen: DEEP_LINK_SCREENS.CLIP_DETAIL,
+                clipId: event.targetId,
+            },
+            category: 'social',
         });
     }
 }

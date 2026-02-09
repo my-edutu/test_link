@@ -25,7 +25,32 @@ export async function generateId(): Promise<string> {
   return uuid;
 }
 
+export async function validateQueueItem(endpoint: string): Promise<boolean> {
+  // In development, allow everything
+  if (__DEV__) {
+    return true;
+  }
+
+  // In production, reject localhost/127.0.0.1/10.0.2.2
+  const invalidDomains = ['localhost', '127.0.0.1', '10.0.2.2'];
+  const isInvalid = invalidDomains.some((domain) => endpoint.includes(domain));
+
+  if (isInvalid) {
+    console.warn(`[Queue] Blocked invalid production request to: ${endpoint}`);
+    return false;
+  }
+
+  return true;
+}
+
 export async function addToQueue(request: QueueRequestInput): Promise<string> {
+  // Validate before adding
+  const isValid = await validateQueueItem(request.endpoint);
+  if (!isValid) {
+    // Return a dummy ID to safely fail without crashing the caller
+    return 'blocked_invalid_request';
+  }
+
   const db = await getDatabase();
   const id = await generateId();
   const created_at = Date.now();
@@ -45,6 +70,33 @@ export async function addToQueue(request: QueueRequestInput): Promise<string> {
 
   console.log(`[Queue] Added request to queue: ${id} - ${request.method} ${request.endpoint}`);
   return id;
+}
+
+export async function removeInvalidQueueItems(): Promise<number> {
+  const db = await getDatabase();
+  const invalidDomains = ['localhost', '127.0.0.1', '10.0.2.2'];
+
+  // Construct a query like: endpoint LIKE '%localhost%' OR endpoint LIKE '%127.0.0.1%' ...
+  const conditions = invalidDomains.map(() => `endpoint LIKE ?`).join(' OR ');
+  const params = invalidDomains.map((d) => `%${d}%`);
+
+  // First count them for logging
+  const countResult = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM offline_queue WHERE ${conditions}`,
+    params
+  );
+
+  const count = countResult?.count ?? 0;
+
+  if (count > 0) {
+    await db.runAsync(
+      `DELETE FROM offline_queue WHERE ${conditions}`,
+      params
+    );
+    console.log(`[Queue] Removed ${count} invalid items from queue`);
+  }
+
+  return count;
 }
 
 export async function getQueue(): Promise<QueuedRequest[]> {

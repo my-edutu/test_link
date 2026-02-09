@@ -3,7 +3,9 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_BASE_URL as API_URL } from '../config';
+
+// const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
 
 // Configure how notifications are handled when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -11,7 +13,7 @@ Notifications.setNotificationHandler({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
-    }),
+    } as Notifications.NotificationBehavior),
 });
 
 export interface NotificationData {
@@ -32,6 +34,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     // Check if running on a physical device
     if (!Device.isDevice) {
         console.log('Push notifications require a physical device');
+        return null;
+    }
+
+    // Check if running in Expo Go for SDK 53+
+    if (Constants.appOwnership === 'expo' && Platform.OS === 'android') {
+        console.log('Push notifications are not supported in Expo Go on Android (SDK 53+)');
         return null;
     }
 
@@ -90,7 +98,8 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
         if (!projectId) {
-            console.warn('No project ID found for push notifications');
+            console.warn('No project ID found for push notifications. Ensure "eas.projectId" is set in app.json.');
+            // Allow proceeding slightly further in case it works without it in some contexts, or fail later
         }
 
         const pushTokenData = await Notifications.getExpoPushTokenAsync({
@@ -99,7 +108,14 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
         token = pushTokenData.data;
         console.log('Expo push token:', token);
-    } catch (error) {
+    } catch (error: any) {
+        // Specific handling for the common Firebase initialization error
+        if (error.message && error.message.includes('Default FirebaseApp is not initialized')) {
+            console.warn('Firebase connection failed: This is expected in Expo Go on Android or if google-services.json is missing.');
+            console.warn('Push notifications will not work in this session.');
+            return null;
+        }
+
         console.error('Error getting push token:', error);
         return null;
     }
@@ -230,6 +246,7 @@ export async function scheduleLocalNotification(
             sound: true,
         },
         trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
             seconds: triggerSeconds,
         },
     });

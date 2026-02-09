@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthProvider';
 import { getPlayableAudioUrl, getPlayableVideoUrl } from '../utils/storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../context/ThemeContext';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import PostOptionsModal from '../components/PostOptionsModal';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
@@ -177,6 +178,8 @@ interface LiveStream {
 
 
 const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
+  const { colors, theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, theme), [colors, theme]);
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'Following' | 'Discover' | 'Trending' | 'Live'>('Following');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -262,13 +265,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
             primary_language,
             avatar_url,
             bio
-          ),
-          parent_clip:voice_clips!voice_clips_parent_clip_id_fkey (
-             id,
-             user:profiles!voice_clips_user_id_fkey (
-                username,
-                avatar_url
-             )
           )
         `)
         .order('created_at', { ascending: false })
@@ -340,10 +336,10 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
           },
           timeAgo: getTimeAgo(clip.created_at),
           createdAt: clip.created_at as any,
-          remixInfo: clip.parent_clip ? {
-            parentClipId: clip.parent_clip.id,
-            parentUsername: clip.parent_clip.user?.username || 'user',
-            parentAvatarUrl: clip.parent_clip.user?.avatar_url
+          remixInfo: clip.original_clip_id ? {
+            parentClipId: clip.original_clip_id,
+            parentUsername: 'user', // Will need separate fetch if needed
+            parentAvatarUrl: undefined
           } : undefined
         } as any;
       });
@@ -1444,30 +1440,22 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        {['Following', 'Discover', 'Trending', 'Live'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[
-              styles.tab,
-              activeTab === tab && styles.activeTab
-            ]}
-            onPress={() => setActiveTab(tab as typeof activeTab)}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === tab && styles.activeTabText
-            ]}>
-              {tab}
-            </Text>
-            {tab === 'Live' && (
-              <View style={styles.liveIndicator}>
-                <View style={styles.liveDot} />
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScrollContent}>
+          {['Following', 'Discover', 'Trending', 'Live'].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab as any)}
+              style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+            >
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                {tab}
+              </Text>
+              {activeTab === tab && <View style={styles.activeIndicator} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Content */}
@@ -1580,15 +1568,6 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
         />
       )}
 
-      {/* Floating Create Button */}
-      <TouchableOpacity
-        style={[styles.createButton, { bottom: insets.bottom + 20 }]}
-        onPress={() => setShowCreateModal(true)}
-      >
-        <Ionicons name="add" size={24} color="#FFFFFF" />
-      </TouchableOpacity>
-
-      <CreatePostModal />
       <VideoPlayerModal
         visible={showVideoPlayer}
         videoUrl={currentVideoUrl}
@@ -1598,16 +1577,23 @@ const EnhancedHomeScreen: React.FC<any> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any, theme: string) => StyleSheet.create({
+  // Container & Layout
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background,
   },
+  content: {
+    flex: 1,
+  },
+
+  // Header
   header: {
-    backgroundColor: '#FF8A00',
-    paddingTop: height * 0.02,
-    paddingBottom: height * 0.02,
-    paddingHorizontal: width * 0.05,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   headerContent: {
     flexDirection: 'row',
@@ -1615,188 +1601,481 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerTitle: {
-    fontSize: width * 0.05,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
   headerButton: {
-    marginLeft: 16,
+    padding: 8,
   },
-  notifBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 3,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notifBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 12,
+
+  // Tabs
+  tabsContainer: {
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
-    justifyContent: 'space-around',
+    borderBottomColor: colors.border,
   },
-  tab: {
+  tabsScrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
+    gap: 8,
   },
-  activeTab: {
-    backgroundColor: '#FF8A00',
+  tabItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+  },
+  tabItemActive: {
+    backgroundColor: colors.primary,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: colors.textSecondary,
   },
-  activeTabText: {
+  tabTextActive: {
     color: '#FFFFFF',
   },
-  liveIndicator: {
-    marginLeft: 4,
+  activeIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
   },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#EF4444',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: width * 0.05,
-    paddingTop: 16,
-  },
-  liveSection: {
-    marginBottom: 20,
-  },
-  liveSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  liveSectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  startLiveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  startLiveButtonText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  liveStreamsList: {
-    paddingBottom: 20,
-  },
-  liveStreamCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  liveStreamContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // Post Cards
+  postCard: {
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  liveStreamAvatar: {
-    position: 'relative',
-    marginRight: 12,
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  liveStreamAvatarText: {
-    fontSize: 32,
+  postContent: {
+    marginVertical: 12,
+  },
+  postMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  postActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+
+  // User Info
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  timeAgo: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 8,
+  },
+
+  // Avatar
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  avatarText: {
+    fontSize: 20,
+  },
+
+  // Phrase / Content
+  phraseContainer: {
+    marginBottom: 8,
+  },
+  phrase: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  translation: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+
+  // Waveform
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 8,
+  },
+  waveformBar: {
+    width: 3,
+    marginHorizontal: 1,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+
+  // Play Buttons
+  playButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#F3F4F6',
-    textAlign: 'center',
-    lineHeight: 48,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  liveStreamInfo: {
-    flex: 1,
+  playButtonDisabled: {
+    opacity: 0.5,
   },
-  liveStreamTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  liveStreamStreamer: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 6,
-  },
-  liveStreamMeta: {
+
+  // Action Buttons
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 8,
+    gap: 4,
   },
-  liveStreamLanguage: {
+  actionText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+
+  // Follow Button
+  followButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+  },
+  followButtonText: {
+    color: '#FFFFFF',
     fontSize: 12,
-    color: '#10B981',
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    fontWeight: '600',
+  },
+  followingButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  followingButtonText: {
+    color: colors.primary,
+  },
+
+  // Tags
+  languageTag: {
+    backgroundColor: colors.primary + '20',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: 8,
-    marginRight: 8,
+    marginTop: 4,
   },
-  liveStreamViewers: {
+  languageText: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.primary,
+    fontWeight: '500',
   },
-  liveStreamActions: {
+  aiTag: {
+    backgroundColor: '#8B5CF6' + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  aiTagText: {
+    fontSize: 10,
+    color: '#8B5CF6',
+    fontWeight: '600',
+  },
+
+  // Video
+  videoContainer: {
+    marginVertical: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+  },
+  videoThumbnail: {
+    width: '100%',
+    height: 200,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  liveStreamBadge: {
+  videoThumbnailImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  videoThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+  },
+  videoThumbnailText: {
+    fontSize: 48,
+  },
+  videoPlayButton: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoDuration: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  videoDurationText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  videoInfo: {
+    padding: 12,
+  },
+  videoPhrase: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  videoTranslation: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+
+  // Story
+  storyContainer: {
+    marginVertical: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  storyThumbnail: {
+    width: '100%',
+    height: 180,
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storyThumbnailText: {
+    fontSize: 48,
+  },
+  storyPlayButton: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storyDuration: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  storyDurationText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+  },
+  storyTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    padding: 12,
+  },
+
+  // Summary / Engagement
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  likesSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  likesSummaryText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 4,
+  },
+
+  // Live Section
+  liveSection: {
+    marginBottom: 16,
+  },
+  liveSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  liveSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EF4444',
     paddingHorizontal: 8,
     paddingVertical: 4,
+    borderRadius: 8,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+    marginRight: 4,
+  },
+
+  // Live Stream Cards
+  liveStreamCard: {
+    backgroundColor: colors.card,
+    marginHorizontal: 8,
     borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginBottom: 8,
+  },
+  liveStreamContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveStreamAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveStreamAvatarText: {
+    fontSize: 24,
+  },
+  liveStreamInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  liveStreamStreamer: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  liveStreamTitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  liveStreamMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  liveStreamLanguage: {
+    fontSize: 12,
+    color: colors.primary,
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  liveStreamViewers: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  liveStreamActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveStreamBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
   liveStreamBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '600',
-    marginLeft: 4,
+    fontWeight: '700',
   },
+  liveStreamsList: {
+    paddingHorizontal: 8,
+  },
+
+  // No Live Streams
   noLiveStreams: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    padding: 40,
   },
   noLiveStreamsEmoji: {
     fontSize: 48,
@@ -1805,493 +2084,77 @@ const styles = StyleSheet.create({
   noLiveStreamsTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 8,
   },
   noLiveStreamsDesc: {
     fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
+    color: colors.textSecondary,
+    marginBottom: 16,
   },
   startFirstLiveButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FF8A00',
+    backgroundColor: '#EF4444',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 25,
+    borderRadius: 24,
+    gap: 8,
   },
   startFirstLiveButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  liveCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  liveCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  liveCardEmoji: {
-    fontSize: 40,
-    marginRight: 16,
-  },
-  liveCardInfo: {
-    flex: 1,
-  },
-  liveCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  liveCardDesc: {
     fontSize: 14,
-    color: '#6B7280',
-  },
-  liveCardBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  liveCardBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginLeft: 4,
-  },
-  postCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  postHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-  },
-  userInfoPressed: {
-    backgroundColor: '#F3F4F6',
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  avatarText: {
-    fontSize: 20,
-  },
-  avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  userDetails: {
-    flex: 1,
-  },
-  userNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginRight: 4,
-  },
-  followButton: {
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  followButtonText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '500',
-  },
-  followingButton: {
-    backgroundColor: '#E5E7EB',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  followingButtonText: {
-    color: '#6B7280',
-  },
-  postMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  languageTag: {
-    backgroundColor: '#FEF3E2',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  languageText: {
-    fontSize: 10,
-    color: '#D97706',
-    fontWeight: '500',
-  },
-  timeAgo: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginRight: 8,
-  },
-  aiTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3E8FF',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  aiTagText: {
-    fontSize: 10,
-    color: '#8B5CF6',
-    fontWeight: '500',
-    marginLeft: 2,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: '#1F2937',
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  postContent: {
-    marginBottom: 16,
-  },
-  likesSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 8,
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  likesSummaryText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#6B7280',
     fontWeight: '600',
   },
-  summaryDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#D1D5DB',
-    marginHorizontal: 8,
-  },
-  phraseContainer: {
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  phrase: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  translation: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 60,
-    marginBottom: 16,
-  },
-  waveformBar: {
-    width: 3,
-    backgroundColor: '#FF8A00',
-    marginHorizontal: 1,
-    borderRadius: 2,
-  },
-  playButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1F2937',
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-  },
-  playButtonDisabled: {
-    backgroundColor: '#E5E7EB',
-  },
-  videoContainer: {
-    alignItems: 'center',
-  },
-  videoThumbnail: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  videoThumbnailImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  videoThumbnailPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#E5E7EB',
-  },
-  videoThumbnailText: {
-    fontSize: 60,
-  },
-  videoPlayButton: {
-    position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoDuration: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  videoDurationText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  videoInfo: {
-    alignItems: 'center',
-  },
-  videoPhrase: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  videoTranslation: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  storyContainer: {
-    alignItems: 'center',
-  },
-  storyThumbnail: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    marginBottom: 12,
-  },
-  storyThumbnailText: {
-    fontSize: 60,
-  },
-  storyPlayButton: {
-    position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  storyDuration: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  storyDurationText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  storyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    textAlign: 'center',
-  },
-  postActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  actionText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  likedText: {
-    color: '#2563EB',
-  },
-  repostedText: {
-    color: '#10B981',
-  },
-  createButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#FF8A00',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
+
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
+
+  // Create Modal
   createModalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 16,
   },
   createModalScroll: {
-    maxHeight: 520,
+    maxHeight: 400,
   },
   createModalScrollContent: {
-    paddingBottom: 24,
+    gap: 12,
   },
   createModalTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 24,
+    fontWeight: '700',
+    color: colors.text,
     textAlign: 'center',
+    marginBottom: 20,
   },
   createOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
+    backgroundColor: colors.background,
+    borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   createOptionIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FEF3E2',
+    backgroundColor: colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
-  },
-  purpleIcon: {
-    backgroundColor: '#F3E8FF',
-  },
-  greenIcon: {
-    backgroundColor: '#ECFDF5',
-  },
-  redIcon: {
-    backgroundColor: '#FEE2E2',
-  },
-  blueIcon: {
-    backgroundColor: '#EFF6FF',
   },
   createOptionContent: {
     flex: 1,
@@ -2299,38 +2162,83 @@ const styles = StyleSheet.create({
   createOptionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 2,
   },
   createOptionDescription: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 13,
+    color: colors.textSecondary,
   },
+
+  // Share Modal
   shareModalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
   },
   shareModalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 20,
+    color: colors.text,
     textAlign: 'center',
+    marginBottom: 20,
   },
   shareOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 4,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    marginBottom: 8,
   },
   shareOptionText: {
     fontSize: 16,
-    color: '#1F2937',
+    color: colors.text,
     marginLeft: 16,
-    fontWeight: '500',
+  },
+
+  // Icon color variants
+  purpleIcon: {
+    backgroundColor: '#8B5CF6' + '20',
+  },
+  redIcon: {
+    backgroundColor: '#EF4444' + '20',
+  },
+  greenIcon: {
+    backgroundColor: '#10B981' + '20',
+  },
+  blueIcon: {
+    backgroundColor: '#3B82F6' + '20',
+  },
+
+  // Loading & Empty states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
 

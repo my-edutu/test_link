@@ -13,6 +13,13 @@ export const NOTIFICATION_EVENTS = {
     REPORT_RESOLVED: 'moderation.report.resolved',
     // Badge events
     BADGE_EARNED: 'badge.earned',
+    // Referral events
+    REFERRAL_BONUS_EARNED: 'referral.bonus.earned',
+    // Like events
+    LIKE_RECEIVED: 'like.received',
+    // Role Progression events
+    USER_PROMOTED: 'user.promoted',
+    USER_DEMOTED: 'user.demoted',
 } as const;
 
 // Event payloads
@@ -87,6 +94,14 @@ export interface BadgeEarnedEvent {
     badgeName: string;
     badgeDescription: string;
     badgeImageUrl: string;
+}
+
+export interface LikeReceivedEvent {
+    userId: string; // The owner of the liked item
+    senderId: string; // The user who liked
+    senderName: string;
+    targetId: string; // The clip/comment ID
+    targetType: 'voice_clip' | 'video_clip' | 'story' | 'comment';
 }
 
 // Deep link screens

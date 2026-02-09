@@ -48,18 +48,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
             );
         }
 
-        // If there's an error or no user, check for legacy x-user-id header
-        // This provides backward compatibility during migration
+        // SECURITY: Strict JWT authentication required
+        // Legacy x-user-id header authentication has been removed for security
         if (err || !user) {
-            const legacyUserId = request.headers['x-user-id'];
-
-            if (legacyUserId && process.env.ALLOW_LEGACY_AUTH === 'true') {
-                this.logger.warn(
-                    `⚠️  Using legacy x-user-id auth for ${request.url}. This is deprecated!`,
-                );
-                // Return a user-like object for backward compatibility
-                return { id: legacyUserId, email: undefined, role: undefined };
-            }
+            // Log failed authentication attempts
+            this.logger.warn(
+                `Authentication failed for ${request.method} ${request.url}: ${info?.message || 'No valid token'}`,
+            );
 
             throw new UnauthorizedException(
                 info?.message || 'Authentication required. Please provide a valid JWT token.',

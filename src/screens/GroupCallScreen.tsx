@@ -11,11 +11,22 @@ import {
   Animated,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../App'; // Adjust path as needed
+import type { RootStackParamList } from '../../App';
+import {
+  LiveKitRoom,
+  VideoTrack,
+  useTracks,
+  useParticipants,
+  useLocalParticipant,
+} from '@livekit/react-native';
+import { Track } from 'livekit-client';
+import { requestCallToken } from '../services/calling';
+import { useAuth } from '../context/AuthProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,37 +34,80 @@ type Props = NativeStackScreenProps<RootStackParamList, 'GroupCall'>;
 
 const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const { group } = route.params;
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [callDuration, setCallDuration] = useState(0);
-  const [isConnected, setIsConnected] = useState(false);
-  const [activeParticipants, setActiveParticipants] = useState([
-    { id: '1', name: 'John', avatar: '🧑‍💼', isMuted: false, isVideoOff: false },
-    { id: '2', name: 'Sarah', avatar: '👩‍💻', isMuted: true, isVideoOff: false },
-    { id: '3', name: 'Mike', avatar: '👨‍🎨', isMuted: false, isVideoOff: true },
-  ]);
 
-  // Animation values
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [token, setToken] = useState<string | null>(null);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate call connection
-    const connectionTimer = setTimeout(() => {
-      setIsConnected(true);
-    }, 3000);
+    const fetchToken = async () => {
+      try {
+        const response = await requestCallToken(group.id, user?.id || 'anonymous', false);
+        setToken(response.token);
+        setServerUrl(response.serverUrl);
 
-    // Start call duration timer
-    const durationTimer = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-
-    return () => {
-      clearTimeout(connectionTimer);
-      clearInterval(durationTimer);
+        // #region agent log
+        // Debug logs removed for production
+        // #endregion
+      } catch (err) {
+        // #region agent log
+        // Debug logs removed for production
+        // #endregion
+        Alert.alert('Error', 'Could not join group call');
+        navigation.goBack();
+      }
     };
+    fetchToken();
+  }, [group.id]);
+
+  if (!token || !serverUrl) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color="#FF8A00" size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <LiveKitRoom
+      serverUrl={serverUrl}
+      token={token}
+      connect={true}
+      video={true}
+      audio={true}
+    >
+      <GroupCallContent group={group} navigation={navigation} insets={insets} />
+    </LiveKitRoom>
+  );
+};
+
+const GroupCallContent = ({ group, navigation, insets }: any) => {
+  const tracks = useTracks([Track.Source.Camera]);
+  const participants = useParticipants();
+  const { localParticipant } = useLocalParticipant();
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCallDuration(d => d + 1), 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const toggleMute = async () => {
+    if (localParticipant) {
+      await localParticipant.setMicrophoneEnabled(isMuted);
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleVideo = async () => {
+    if (localParticipant) {
+      await localParticipant.setCameraEnabled(isVideoOff);
+      setIsVideoOff(!isVideoOff);
+    }
+  };
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -61,211 +115,48 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const endCall = () => {
-    Alert.alert(
-      'End Call',
-      'Are you sure you want to leave this group call?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave Call',
-          style: 'destructive',
-          onPress: () => navigation.goBack()
-        }
-      ]
-    );
-  };
-
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-  };
-
-  const toggleVideo = () => {
-    setIsVideoOff(!isVideoOff);
-  };
-
-  const toggleSpeaker = () => {
-    setIsSpeakerOn(!isSpeakerOn);
-  };
-
-  const switchCamera = () => {
-    Alert.alert('Camera Switched', 'Switched to front/back camera');
-  };
-
-  const renderParticipant = (participant: any, index: number) => (
-    <View key={participant.id} style={styles.participantContainer}>
-      {participant.isVideoOff ? (
-        <View style={styles.participantVideoOff}>
-          <Text style={styles.participantAvatar}>{participant.avatar}</Text>
-          <View style={styles.participantVideoOffOverlay}>
-            <Ionicons name="videocam-off" size={16} color="#FFFFFF" />
-          </View>
-        </View>
-      ) : (
-        <View style={styles.participantVideo}>
-          <Text style={styles.participantVideoText}>Video Feed</Text>
-        </View>
-      )}
-
-      <View style={styles.participantInfo}>
-        <Text style={styles.participantName}>{participant.name}</Text>
-        {participant.isMuted && (
-          <View style={styles.mutedIndicator}>
-            <Ionicons name="mic-off" size={12} color="#EF4444" />
-          </View>
-        )}
-      </View>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Call Status Header */}
+      {/* Header */}
       <View style={[styles.statusHeader, { paddingTop: insets.top + 10 }]}>
         <View style={styles.statusInfo}>
           <Text style={styles.groupName}>{group.name}</Text>
           <Text style={styles.callStatus}>
-            {isConnected
-              ? `Group Call • ${formatDuration(callDuration)} • ${activeParticipants.length + 1} participants`
-              : 'Connecting...'}
+            Group Call • {formatDuration(callDuration)} • {participants.length} online
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.minimizeButton}
-          onPress={() => {
-            Alert.alert('Minimize', 'Group call minimized');
-          }}
-        >
-          <Ionicons name="remove" size={20} color="#FFFFFF" />
+        <TouchableOpacity style={styles.minimizeButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
-      {/* Participants Grid */}
-      <ScrollView style={styles.participantsContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.participantsGrid}>
-          {/* Your video */}
-          <View style={styles.participantContainer}>
-            {isVideoOff ? (
-              <View style={styles.participantVideoOff}>
-                <Text style={styles.participantAvatar}>👤</Text>
-                <View style={styles.participantVideoOffOverlay}>
-                  <Ionicons name="videocam-off" size={16} color="#FFFFFF" />
-                </View>
-              </View>
-            ) : (
-              <View style={[styles.participantVideo, styles.yourVideo]}>
-                <Text style={styles.participantVideoText}>You</Text>
-              </View>
-            )}
+      {/* Grid */}
+      <ScrollView contentContainerStyle={styles.participantsGrid}>
+        {tracks.map((track, index) => (
+          <View key={track.participant.sid} style={styles.participantContainer}>
+            <VideoTrack trackRef={track} style={styles.participantVideo} />
             <View style={styles.participantInfo}>
-              <Text style={styles.participantName}>You</Text>
-              {isMuted && (
-                <View style={styles.mutedIndicator}>
-                  <Ionicons name="mic-off" size={12} color="#EF4444" />
-                </View>
-              )}
+              <Text style={styles.participantName}>
+                {track.participant.identity} {track.participant.isLocal ? '(You)' : ''}
+              </Text>
             </View>
           </View>
-
-          {/* Other participants */}
-          {activeParticipants.map((participant, index) =>
-            renderParticipant(participant, index)
-          )}
-        </View>
+        ))}
       </ScrollView>
 
-      {/* Translation Status */}
-      <View style={styles.translationContainer}>
-        <View style={styles.translationIndicator}>
-          <Ionicons name="language" size={16} color="#10B981" />
-          <Text style={styles.translationText}>
-            Real-time translation active for {group.language}
-          </Text>
-        </View>
-      </View>
-
-      {/* Call Controls */}
+      {/* Controls */}
       <View style={[styles.controlsContainer, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.controlsRow}>
-          {/* Mute Button */}
-          <TouchableOpacity
-            style={[
-              styles.controlButton,
-              isMuted && styles.activeControlButton
-            ]}
-            onPress={toggleMute}
-          >
-            <Ionicons
-              name={isMuted ? "mic-off" : "mic"}
-              size={24}
-              color="#FFFFFF"
-            />
+          <TouchableOpacity style={[styles.controlButton, isMuted && styles.activeControlButton]} onPress={toggleMute}>
+            <Ionicons name={isMuted ? "mic-off" : "mic"} size={24} color="#FFFFFF" />
           </TouchableOpacity>
-
-          {/* Video Toggle Button */}
-          <TouchableOpacity
-            style={[
-              styles.controlButton,
-              isVideoOff && styles.activeControlButton
-            ]}
-            onPress={toggleVideo}
-          >
-            <Ionicons
-              name={isVideoOff ? "videocam-off" : "videocam"}
-              size={24}
-              color="#FFFFFF"
-            />
+          <TouchableOpacity style={[styles.controlButton, isVideoOff && styles.activeControlButton]} onPress={toggleVideo}>
+            <Ionicons name={isVideoOff ? "videocam-off" : "videocam"} size={24} color="#FFFFFF" />
           </TouchableOpacity>
-
-          {/* Speaker Button */}
-          <TouchableOpacity
-            style={[
-              styles.controlButton,
-              isSpeakerOn && styles.activeControlButton
-            ]}
-            onPress={toggleSpeaker}
-          >
-            <Ionicons
-              name={isSpeakerOn ? "volume-high" : "volume-low"}
-              size={24}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-
-          {/* Switch Camera Button */}
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={switchCamera}
-          >
-            <Ionicons name="camera-reverse" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          {/* End Call Button */}
-          <TouchableOpacity
-            style={[styles.controlButton, styles.endCallButton]}
-            onPress={endCall}
-          >
+          <TouchableOpacity style={[styles.controlButton, styles.endCallButton]} onPress={() => navigation.goBack()}>
             <Ionicons name="call" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Additional Controls */}
-        <View style={styles.additionalControls}>
-          <TouchableOpacity style={styles.additionalButton}>
-            <Ionicons name="chatbubble" size={20} color="#9CA3AF" />
-            <Text style={styles.additionalButtonText}>Chat</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.additionalButton}>
-            <Ionicons name="people-outline" size={20} color="#9CA3AF" />
-            <Text style={styles.additionalButtonText}>Participants</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.additionalButton}>
-            <Ionicons name="ellipsis-horizontal" size={20} color="#9CA3AF" />
-            <Text style={styles.additionalButtonText}>More</Text>
           </TouchableOpacity>
         </View>
       </View>

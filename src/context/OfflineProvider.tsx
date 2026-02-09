@@ -15,7 +15,7 @@ const OfflineContext = createContext<OfflineContextValue>({
   isConnected: true,
   isSyncing: false,
   pendingCount: 0,
-  forceSync: async () => {},
+  forceSync: async () => { },
 });
 
 export const useOffline = () => useContext(OfflineContext);
@@ -58,7 +58,15 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
 
   // Initialize sync manager and subscribe to events
   useEffect(() => {
-    syncManager.initialize();
+    // Initialize with error handling - don't crash if network module fails
+    (async () => {
+      try {
+        await syncManager.initialize();
+      } catch (error) {
+        console.error('[OfflineProvider] SyncManager initialization failed:', error);
+        // Continue without sync manager - app can still function
+      }
+    })();
 
     const unsubscribe = syncManager.subscribe((event: SyncEvent) => {
       switch (event.type) {
@@ -116,8 +124,12 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
   }, [isConnected, showToast]);
 
   const updatePendingCount = async () => {
-    const count = await getQueueCount();
-    setPendingCount(count);
+    try {
+      const count = await getQueueCount();
+      setPendingCount(count);
+    } catch (error) {
+      console.warn('[OfflineProvider] Failed to get queue count:', error);
+    }
   };
 
   const forceSync = useCallback(async () => {

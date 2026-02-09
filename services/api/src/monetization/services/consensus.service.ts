@@ -98,12 +98,6 @@ export class ConsensusService {
 
     /**
      * Process the outcome of consensus in a single database transaction.
-     * All operations succeed or fail together - no partial updates.
-     * 
-     * - Update clip status
-     * - Pay validators who agreed
-     * - Pay the clip owner (if approved)
-     * - Penalize outliers
      */
     private async processConsensusOutcome(
         voiceClipId: string,
@@ -111,13 +105,11 @@ export class ConsensusService {
         agreers: string[],
         outliers: string[],
     ): Promise<void> {
-        // Start transaction
-        try {
-            await this.db.execute(sql`BEGIN`);
+        await this.db.transaction(async (tx) => {
             this.logger.debug(`Transaction started for clip ${voiceClipId}`);
 
             // IDEMPOTENCY CHECK: Verify clip hasn't already been processed
-            const [currentClip] = await this.db
+            const [currentClip] = await tx
                 .select({ status: schema.voiceClips.status })
                 .from(schema.voiceClips)
                 .where(eq(schema.voiceClips.id, voiceClipId))
@@ -125,18 +117,17 @@ export class ConsensusService {
 
             if (currentClip?.status === CLIP_STATUS.APPROVED || currentClip?.status === CLIP_STATUS.REJECTED) {
                 this.logger.warn(`Clip ${voiceClipId} already processed (status: ${currentClip.status}). Skipping.`);
-                await this.db.execute(sql`ROLLBACK`);
                 return;
             }
 
             // 1. Update Clip Status
-            await this.db
+            await tx
                 .update(schema.voiceClips)
                 .set({ status: approved ? CLIP_STATUS.APPROVED : CLIP_STATUS.REJECTED })
                 .where(eq(schema.voiceClips.id, voiceClipId));
 
             // 2. Get clip details for payouts
-            const [clip] = await this.db
+            const [clip] = await tx
                 .select({
                     userId: schema.voiceClips.userId,
                     parentClipId: schema.voiceClips.parentClipId,
@@ -151,20 +142,20 @@ export class ConsensusService {
 
             // 3. Pay agreeing validators
             for (const validatorId of agreers) {
-                await this.payoutService.creditValidatorReward(validatorId, 'validation_correct');
-                await this.adjustTrustScoreInTransaction(validatorId, TRUST_SCORE_INCREASE_CORRECT);
+                await this.payoutService.creditValidatorReward(validatorId, 'validation_correct', tx);
+                await this.adjustTrustScoreInTransaction(validatorId, TRUST_SCORE_INCREASE_CORRECT, tx);
             }
 
             // 4. Penalize outliers
             for (const validatorId of outliers) {
-                await this.adjustTrustScoreInTransaction(validatorId, -TRUST_SCORE_DECREASE_WRONG);
+                await this.adjustTrustScoreInTransaction(validatorId, -TRUST_SCORE_DECREASE_WRONG, tx);
             }
 
             // 5. If approved, pay the clip owner (and handle remix royalties)
             if (approved) {
                 if (clip.parentClipId) {
                     // It's a remix - get parent owner and split royalty
-                    const [parentClip] = await this.db
+                    const [parentClip] = await tx
                         .select({ userId: schema.voiceClips.userId })
                         .from(schema.voiceClips)
                         .where(eq(schema.voiceClips.id, clip.parentClipId))
@@ -179,11 +170,11 @@ export class ConsensusService {
                             parentClip.userId,
                             baseReward,
                             0.7, // 70% to remixer
+                            tx
                         );
 
-                        // Notify original creator about royalty (after commit)
-                        // Store for later emission
-                        this.scheduleNotification(NOTIFICATION_EVENTS.ROYALTY_RECEIVED, {
+                        // Notify original creator about royalty (Transactional Outbox)
+                        await this.scheduleNotification(tx, NOTIFICATION_EVENTS.ROYALTY_RECEIVED, {
                             userId: parentClip.userId,
                             remixClipId: voiceClipId,
                             amount: (baseReward * 0.3).toFixed(2),
@@ -191,10 +182,10 @@ export class ConsensusService {
                     }
                 } else {
                     // Regular clip - full reward to owner
-                    const reward = await this.payoutService.creditClipApprovalReward(clip.userId, voiceClipId);
+                    const reward = await this.payoutService.creditClipApprovalReward(clip.userId, voiceClipId, tx);
 
                     // Schedule notification for after commit
-                    this.scheduleNotification(NOTIFICATION_EVENTS.CLIP_APPROVED, {
+                    await this.scheduleNotification(tx, NOTIFICATION_EVENTS.CLIP_APPROVED, {
                         userId: clip.userId,
                         clipId: voiceClipId,
                         rewardAmount: reward?.toString(),
@@ -202,37 +193,23 @@ export class ConsensusService {
                 }
             } else {
                 // Clip rejected
-                this.scheduleNotification(NOTIFICATION_EVENTS.CLIP_REJECTED, {
+                await this.scheduleNotification(tx, NOTIFICATION_EVENTS.CLIP_REJECTED, {
                     userId: clip.userId,
                     clipId: voiceClipId,
                 });
             }
 
-            // Commit transaction
-            await this.db.execute(sql`COMMIT`);
             this.logger.log(`Transaction committed for clip ${voiceClipId}`);
-
-            // Emit notifications after successful commit
-            this.emitPendingNotifications();
-
-        } catch (error) {
-            // Rollback on any error
-            this.logger.error(`Transaction failed for clip ${voiceClipId}, rolling back:`, error);
-            try {
-                await this.db.execute(sql`ROLLBACK`);
-                this.logger.debug(`Transaction rolled back for clip ${voiceClipId}`);
-            } catch (rollbackError) {
-                this.logger.error(`Rollback also failed:`, rollbackError);
-            }
-            throw error;
-        }
+            // No need to manually emit; a worker will pick up events from 'notification_outbox'
+        });
     }
 
     /**
      * Adjust a user's trust score within the current transaction.
      */
-    private async adjustTrustScoreInTransaction(userId: string, delta: number): Promise<void> {
-        await this.db.execute(sql`
+    private async adjustTrustScoreInTransaction(userId: string, delta: number, tx: any): Promise<void> {
+        const executor = tx || this.db;
+        await executor.execute(sql`
             UPDATE profiles
             SET trust_score = LEAST(GREATEST(COALESCE(trust_score, 100) + ${delta}, ${TRUST_SCORE_MIN}), ${TRUST_SCORE_MAX}),
                 updated_at = now()
@@ -241,35 +218,13 @@ export class ConsensusService {
     }
 
     /**
-     * Adjust a user's trust score, clamping to min/max bounds.
-     * For use outside of transactions.
+     * Schedule a notification by writing to the Outbox table.
+     * This ensures the notification is only sent if the transaction commits.
      */
-    private async adjustTrustScore(userId: string, delta: number): Promise<void> {
-        await this.db.execute(sql`
-            UPDATE profiles
-            SET trust_score = LEAST(GREATEST(COALESCE(trust_score, 100) + ${delta}, ${TRUST_SCORE_MIN}), ${TRUST_SCORE_MAX}),
-                updated_at = now()
-            WHERE id = ${userId}
-        `);
-    }
-
-    // Pending notifications to emit after transaction commit
-    private pendingNotifications: Array<{ event: string; payload: any }> = [];
-
-    /**
-     * Schedule a notification to be emitted after transaction commits.
-     */
-    private scheduleNotification(event: string, payload: any): void {
-        this.pendingNotifications.push({ event, payload });
-    }
-
-    /**
-     * Emit all pending notifications and clear the queue.
-     */
-    private emitPendingNotifications(): void {
-        for (const { event, payload } of this.pendingNotifications) {
-            this.eventEmitter.emit(event, payload);
-        }
-        this.pendingNotifications = [];
+    private async scheduleNotification(tx: any, event: string, payload: any): Promise<void> {
+        await tx.insert(schema.notificationOutbox).values({
+            eventType: event,
+            payload: payload,
+        });
     }
 }

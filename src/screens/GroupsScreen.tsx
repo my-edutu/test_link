@@ -1,5 +1,6 @@
 // src/screens/GroupsScreen.tsx
 import React, { useEffect, useState, useCallback } from 'react';
+import { NewtonCradleLoader } from '../components/NewtonCradleLoader';
 import {
   View,
   Text,
@@ -12,17 +13,18 @@ import {
   TextInput,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CompositeNavigationProp } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CreateGroupModal from '../components/CreateGroupModal';
+import { LinearGradient } from 'expo-linear-gradient';
+import { GlassCard } from '../components/GlassCard';
+import { Colors, Layout, Typography } from '../constants/Theme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface Group {
   id: string;
@@ -73,9 +75,9 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     const date = new Date(dateIso);
     const diff = Math.floor((Date.now() - date.getTime()) / 1000);
     if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff/60)}m`;
-    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
-    return `${Math.floor(diff/86400)}d`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
   };
 
   // Fetch all groups (for discovery)
@@ -227,6 +229,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
       setGroups(prev => prev.map(group =>
         group.id === groupId ? { ...group, isJoined: true, members: group.members + 1 } : group
       ));
+      fetchMyGroups(); // Refresh my groups
 
       Alert.alert('Success', 'You have joined the group!');
     } catch (error) {
@@ -270,14 +273,14 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
   // Filter groups based on search and category
   const filteredGroups = groups.filter(group => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         group.description.toLowerCase().includes(searchQuery.toLowerCase());
+      group.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || group.language.toLowerCase().includes(selectedCategory.toLowerCase());
     return matchesSearch && matchesCategory;
   });
 
   const filteredMyGroups = myGroups.filter(group => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         group.description.toLowerCase().includes(searchQuery.toLowerCase());
+      group.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -324,100 +327,6 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     };
   }, [user?.id, fetchGroups, fetchMyGroups]);
 
-  const renderGroupItem = (group: Group) => (
-    <TouchableOpacity
-      key={group.id}
-      style={styles.groupItem}
-      onPress={() => {
-        // Navigate to group chat
-        navigation.navigate('GroupChat', {
-          group: {
-            id: group.id,
-            name: group.name,
-            description: group.description,
-            avatar: group.avatar,
-            members: group.members,
-            language: group.language,
-            lastActivity: group.lastActivity,
-            isPrivate: group.isPrivate,
-            unreadCount: group.unreadCount,
-          }
-        });
-      }}
-    >
-      <View style={styles.groupAvatar}>
-        <Text style={styles.groupAvatarText}>{group.avatar}</Text>
-        {group.isPrivate && (
-          <View style={styles.privateIndicator}>
-            <Ionicons name="lock-closed" size={8} color="#FFFFFF" />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.groupInfo}>
-        <View style={styles.groupHeader}>
-          <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
-          <Text style={styles.groupActivity}>{group.lastActivity}</Text>
-        </View>
-
-        <Text style={styles.groupDescription} numberOfLines={2}>{group.description}</Text>
-
-        <View style={styles.groupMeta}>
-          <View style={styles.metaItem}>
-            <Ionicons name="people" size={14} color="#9CA3AF" />
-            <Text style={styles.metaText}>{group.members} members</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Ionicons name="language" size={14} color="#9CA3AF" />
-            <Text style={styles.metaText}>{group.language}</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.groupActions}>
-        {group.isJoined ? (
-          <TouchableOpacity
-            style={styles.joinButton}
-            onPress={() => leaveGroup(group.id)}
-          >
-            <Text style={styles.joinButtonText}>Leave</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.joinButton, styles.joinButtonActive]}
-            onPress={() => joinGroup(group.id)}
-          >
-            <Text style={[styles.joinButtonText, styles.joinButtonTextActive]}>Join</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderCategoryItem = (category: GroupCategory) => (
-    <TouchableOpacity
-      key={category.id}
-      style={[
-        styles.categoryItem,
-        selectedCategory === category.id && styles.categoryItemActive
-      ]}
-      onPress={() => setSelectedCategory(
-        selectedCategory === category.id ? null : category.id
-      )}
-    >
-      <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-        <Ionicons name={category.icon as any} size={20} color="#FFFFFF" />
-      </View>
-      <Text style={[
-        styles.categoryText,
-        selectedCategory === category.id && styles.categoryTextActive
-      ]}>
-        {category.name}
-      </Text>
-    </TouchableOpacity>
-  );
-
-
   const getCurrentGroups = () => {
     switch (activeTab) {
       case 'Discover':
@@ -431,56 +340,160 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
+  const renderGroupItem = (group: Group) => (
+    <GlassCard key={group.id} style={styles.groupItem} intensity={30}>
+      <TouchableOpacity
+        onPress={() => {
+          // Navigate to group chat
+          navigation.navigate('GroupChat', {
+            group: {
+              id: group.id,
+              name: group.name,
+              description: group.description,
+              avatar: group.avatar,
+              members: group.members,
+              language: group.language,
+              lastActivity: group.lastActivity,
+              isPrivate: group.isPrivate,
+              unreadCount: group.unreadCount,
+            }
+          });
+        }}
+        style={{ flexDirection: 'row', alignItems: 'center' }}
+      >
+        <LinearGradient
+          colors={[Colors.primary, Colors.secondary]}
+          style={styles.groupAvatar}
+        >
+          <Text style={styles.groupAvatarText}>{group.name.charAt(0).toUpperCase()}</Text>
+          {group.isPrivate && (
+            <View style={styles.privateIndicator}>
+              <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
+            </View>
+          )}
+        </LinearGradient>
+
+        <View style={styles.groupInfo}>
+          <View style={styles.groupHeader}>
+            <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+            {group.lastActivity && <Text style={styles.groupActivity}>{group.lastActivity}</Text>}
+          </View>
+
+          <Text style={styles.groupDescription} numberOfLines={2}>{group.description}</Text>
+
+          <View style={styles.groupMeta}>
+            <View style={styles.metaItem}>
+              <Ionicons name="people" size={12} color={Colors.textSecondary} />
+              <Text style={styles.metaText}>{group.members} members</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Ionicons name="language" size={12} color={Colors.textSecondary} />
+              <Text style={styles.metaText}>{group.language}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.groupActions}>
+          {group.isJoined ? (
+            <TouchableOpacity
+              style={styles.leaveButton}
+              onPress={() => leaveGroup(group.id)}
+            >
+              <Ionicons name="log-out-outline" size={20} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.joinButton}
+              onPress={() => joinGroup(group.id)}
+            >
+              <Text style={styles.joinButtonText}>Join</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    </GlassCard>
+  );
+
+  const renderCategoryItem = (category: GroupCategory) => {
+    const isActive = selectedCategory === category.id;
+    return (
+      <TouchableOpacity
+        key={category.id}
+        onPress={() => setSelectedCategory(isActive ? null : category.id)}
+        style={[
+          styles.categoryItem,
+          isActive && { backgroundColor: Colors.primary, borderColor: Colors.primary }
+        ]}
+      >
+        <Ionicons name={category.icon as any} size={16} color={isActive ? '#FFF' : Colors.text} />
+        <Text style={[styles.categoryText, isActive && { color: '#FFF' }]}>
+          {category.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+            <Text style={styles.headerTitle}>Groups</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Groups</Text>
           <TouchableOpacity
             onPress={() => setShowCreateModal(true)}
             style={styles.createHeaderButton}
           >
-            <Ionicons name="add" size={24} color="#FFFFFF" />
+            <LinearGradient
+              colors={[Colors.primary, '#FF5F00']}
+              style={styles.createButtonGradient}
+            >
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.createButtonText}>Create</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+        <GlassCard intensity={20} style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={Colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search groups..."
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={Colors.textSecondary}
           />
-        </View>
+        </GlassCard>
 
         {/* Category Filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesContainer}
-          contentContainerStyle={styles.categoriesContent}
-        >
-          {groupCategories.map(renderCategoryItem)}
-        </ScrollView>
+        <View style={{ height: 50, marginBottom: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesContent}
+          >
+            {groupCategories.map(renderCategoryItem)}
+          </ScrollView>
+        </View>
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
           {(['Discover', 'My Groups', 'Created'] as const).map((tab) => (
             <TouchableOpacity
               key={tab}
-              style={[styles.tab, activeTab === tab && styles.activeTab]}
+              style={[
+                styles.tab,
+                activeTab === tab && styles.activeTab
+              ]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
@@ -494,7 +507,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
       {/* Content */}
       <ScrollView
         style={styles.content}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingHorizontal: 16 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -504,39 +517,48 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
               await Promise.all([fetchGroups(), fetchMyGroups()]);
               setRefreshing(false);
             }}
+            tintColor={Colors.primary}
           />
         }
       >
         {loading ? (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading groups...</Text>
+            <NewtonCradleLoader />
+            <Text style={[styles.loadingText, { marginTop: 12 }]}>Loading groups...</Text>
           </View>
         ) : (
           <>
             {getCurrentGroups().length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="people-outline" size={64} color="#D1D5DB" />
+                <Ionicons name="people-outline" size={64} color="rgba(255,255,255,0.2)" />
                 <Text style={styles.emptyTitle}>
                   {activeTab === 'Discover' ? 'No groups found' :
-                   activeTab === 'My Groups' ? 'You haven\'t joined any groups yet' :
-                   'You haven\'t created any groups yet'}
+                    activeTab === 'My Groups' ? 'You haven\'t joined any groups yet' :
+                      'You haven\'t created any groups yet'}
                 </Text>
                 <Text style={styles.emptySubtitle}>
                   {activeTab === 'Discover' ? 'Try adjusting your search or filters' :
-                   activeTab === 'My Groups' ? 'Browse and join groups to get started' :
-                   'Create your first group to bring people together'}
+                    activeTab === 'My Groups' ? 'Browse and join groups to get started' :
+                      'Create your first group to bring people together'}
                 </Text>
                 {activeTab === 'Created' && (
                   <TouchableOpacity
-                    style={styles.createFirstButton}
                     onPress={() => setShowCreateModal(true)}
+                    style={{ marginTop: 24 }}
                   >
-                    <Text style={styles.createFirstButtonText}>Create Group</Text>
+                    <LinearGradient
+                      colors={[Colors.primary, '#FF5F00']}
+                      style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 }}
+                    >
+                      <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Create Group</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                 )}
               </View>
             ) : (
-              getCurrentGroups().map(renderGroupItem)
+              <View style={{ gap: 16 }}>
+                {getCurrentGroups().map(renderGroupItem)}
+              </View>
             )}
           </>
         )}
@@ -547,44 +569,59 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
         onClose={() => setShowCreateModal(false)}
         onGroupCreated={handleGroupCreated}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#000',
   },
   header: {
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: width * 0.05,
+    paddingHorizontal: 16,
     paddingBottom: 16,
+    zIndex: 10,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   backButton: {
-    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
+    marginLeft: 12,
   },
   createHeaderButton: {
-    padding: 8,
+    overflow: 'hidden',
+    borderRadius: 20,
+  },
+  createButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  createButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     marginBottom: 16,
+    height: 50,
   },
   searchIcon: {
     marginRight: 8,
@@ -592,65 +629,55 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#1F2937',
+    color: Colors.text,
     paddingVertical: 12,
   },
-  categoriesContainer: {
-    marginBottom: 16,
-  },
   categoriesContent: {
-    paddingRight: width * 0.05,
+    paddingRight: 16,
+    gap: 10,
+    alignItems: 'center',
   },
   categoryItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  categoryItemActive: {
-    backgroundColor: '#FFFFFF',
-  },
-  categoryIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    gap: 8,
   },
   categoryText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '500',
-  },
-  categoryTextActive: {
-    color: '#FF8A00',
+    fontSize: 13,
+    color: Colors.text,
+    fontWeight: '600',
   },
   tabsContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
     padding: 4,
+    marginTop: 8,
   },
   tab: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
   activeTab: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.2)', // Or darker contrast
   },
   tabText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   activeTabText: {
-    color: '#FF8A00',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   content: {
     flex: 1,
@@ -662,135 +689,125 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,
-    paddingHorizontal: width * 0.1,
+    paddingHorizontal: 30,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: '700',
+    color: Colors.text,
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
-  createFirstButton: {
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  createFirstButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
   groupItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    padding: 16,
+    borderRadius: 20,
   },
   groupAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#F3F4F6',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
     position: 'relative',
   },
   groupAvatarText: {
     fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
   privateIndicator: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     right: 0,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.error,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#000',
   },
   groupInfo: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
   },
-  groupHeader: {
+  groupHeader: { // Row for name + activity
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
   groupName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
     flex: 1,
+    marginRight: 8,
   },
   groupActivity: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: Colors.textSecondary,
   },
   groupDescription: {
     fontSize: 14,
-    color: '#6B7280',
+    color: 'rgba(255,255,255,0.7)',
     marginBottom: 8,
+    lineHeight: 20,
   },
   groupMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
   },
   metaText: {
     fontSize: 12,
-    color: '#9CA3AF',
-    marginLeft: 4,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
   groupActions: {
-    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
+  leaveButton: {
+    padding: 8,
   },
   joinButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  joinButtonActive: {
-    backgroundColor: '#FF8A00',
-    borderColor: '#FF8A00',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
   joinButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  joinButtonTextActive: {
-    color: '#FFFFFF',
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
 

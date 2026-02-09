@@ -9,16 +9,20 @@ import {
   Dimensions,
   Alert,
   ScrollView,
-  Modal,
   TextInput,
+  Platform,
+  BackHandler,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { supabase } from '../supabaseClient';
 import { useAudioPlayer } from 'expo-audio';
 import { getPlayableAudioUrl } from '../utils/storage';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme } from '../context/ThemeContext';
 import { monetizationApi } from '../services/monetizationApi';
 import { trackEvent, AnalyticsEvents } from '../services/analytics';
 
@@ -52,6 +56,7 @@ const mockWaveform = [30, 50, 70, 40, 60, 80, 90, 70, 40, 20, 50, 60, 30, 40, 60
 
 const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const clipId = route?.params?.clipId;
   const [hasValidated, setHasValidated] = useState(false);
   const [validationResult, setValidationResult] = useState<'correct' | 'incorrect' | null>(null);
@@ -68,6 +73,11 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
   const audioPlayer = useAudioPlayer();
   const [audioLoading, setAudioLoading] = useState(false);
 
+  // Validator Stats (for monetization display)
+  const [validatorAccuracy, setValidatorAccuracy] = useState<number>(100);
+  const [dailyValidationCount, setDailyValidationCount] = useState<number>(0);
+  const DAILY_VALIDATION_CAP = 20; // Max validations that count toward rewards per day
+
   // Flag Modal State
   const [flagModalVisible, setFlagModalVisible] = useState(false);
   const [selectedFlagReason, setSelectedFlagReason] = useState<string | null>(null);
@@ -76,34 +86,15 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
   // Consensus feedback
   const [consensusMessage, setConsensusMessage] = useState<string | null>(null);
 
-  // Fetch Next Clip Logic (still uses Supabase for reads - this is safe)
-  const fetchNextClip = useCallback(async (currentId?: string) => {
+  // Fetch Next Clip Logic
+  const fetchNextClip = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const { data: myValidations } = await supabase
-        .from('validations')
-        .select('voice_clip_id')
-        .eq('validator_id', user.id);
+      const queue = await monetizationApi.getValidationQueue(1);
 
-      const validatedIds = myValidations?.map(v => v.voice_clip_id) || [];
-      if (currentId) validatedIds.push(currentId);
-
-      let query = supabase
-        .from('voice_clips')
-        .select('id, phrase, language, dialect, audio_url')
-        .neq('user_id', user.id);
-
-      if (validatedIds.length > 0) {
-        query = query.not('id', 'in', `(${validatedIds.join(',')})`);
-      }
-
-      const { data, error: fetchError } = await query.limit(1).maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      if (data) {
-        setClip(data);
+      if (queue && queue.length > 0) {
+        setClip(queue[0]);
         setError(null);
         setHasValidated(false);
         setValidationResult(null);
@@ -119,6 +110,28 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
       setLoading(false);
     }
   }, [user?.id, navigation]);
+
+  // Fetch Validator Stats for Display
+  useEffect(() => {
+    const fetchValidatorStats = async () => {
+      if (!user?.id) return;
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('accuracy_rating, daily_validations_count')
+          .eq('id', user.id)
+          .single();
+
+        if (data) {
+          setValidatorAccuracy(data.accuracy_rating || 100);
+          setDailyValidationCount(data.daily_validations_count || 0);
+        }
+      } catch (error) {
+        console.error('Error fetching validator stats:', error);
+      }
+    };
+    fetchValidatorStats();
+  }, [user?.id]);
 
   // Initial Load
   useEffect(() => {
@@ -137,14 +150,25 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   }, [clipId, fetchNextClip]);
 
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const onBackPress = () => {
+      if (flagModalVisible) {
+        setFlagModalVisible(false);
+        return true;
+      }
+      return false;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [flagModalVisible]);
+
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      if (audioPlayer.playing) {
-        audioPlayer.pause();
-      }
+      // expo-audio cleanup
     };
-  }, [audioPlayer]);
+  }, []);
 
   /**
    * SECURE VALIDATION SUBMISSION
@@ -162,8 +186,11 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
     setHasValidated(true);
 
     try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
       const result = await monetizationApi.submitValidation(
-        user.id,
         clip.id,
         isCorrect
       );
@@ -177,6 +204,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
           consensus_reached: result.consensusReached || false,
         });
 
+        // Update local stats immediately for UX
+        setDailyValidationCount((prev) => prev + 1);
+
         let message = isCorrect
           ? "Great! You've confirmed this pronunciation is correct."
           : 'Thank you for the feedback. This helps the community learn.';
@@ -186,7 +216,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
           message += '\n\n🎉 Consensus reached!';
         }
 
-        Alert.alert('Validation Submitted', message);
+        Alert.alert('Validation Submitted', message, [
+          { text: 'Next Clip', onPress: fetchNextClip }
+        ]);
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to submit validation');
@@ -205,9 +237,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
 
     try {
       const result = await monetizationApi.flagForReview(
-        user.id,
         clip.id,
-        selectedFlagReason
+        selectedFlagReason,
+        flagNotes
       );
 
       if (result.success) {
@@ -215,7 +247,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         setFlagModalVisible(false);
         setSelectedFlagReason(null);
         setFlagNotes('');
-        fetchNextClip(clip.id);
+        fetchNextClip();
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to flag clip');
@@ -228,13 +260,13 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
       'Are you sure you want to skip this validation?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Skip', onPress: () => fetchNextClip(clip?.id) }
+        { text: 'Skip', onPress: () => fetchNextClip() }
       ]
     );
   };
 
   const handleNext = () => {
-    fetchNextClip(clip?.id);
+    fetchNextClip();
   };
 
   const handlePlay = async () => {
@@ -279,17 +311,17 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#1F2937" />
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Validate Pronunciation</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Validate Pronunciation</Text>
           <TouchableOpacity onPress={handleSkip}>
-            <Text style={styles.skipButton}>Skip</Text>
+            <Text style={[styles.skipButton, { color: colors.textSecondary }]}>Skip</Text>
           </TouchableOpacity>
         </View>
 
@@ -306,10 +338,27 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
           </Text>
         </View>
 
+        {/* Validator Stats Card */}
+        <View style={[styles.validatorStatsCard, { backgroundColor: colors.card }]}>
+          <View style={styles.statItem}>
+            <Ionicons name="ribbon" size={16} color="#10B981" />
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Accuracy</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{validatorAccuracy.toFixed(1)}%</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Ionicons name="today" size={16} color="#FF8A00" />
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Today's Validations</Text>
+            <Text style={[styles.statValue, { color: dailyValidationCount >= DAILY_VALIDATION_CAP ? '#EF4444' : colors.text }]}>
+              {dailyValidationCount}/{DAILY_VALIDATION_CAP}
+            </Text>
+          </View>
+        </View>
+
         {/* Clip Information */}
-        <View style={styles.clipCard}>
+        <View style={[styles.clipCard, { backgroundColor: colors.card }]}>
           <View style={styles.clipHeader}>
-            <Text style={styles.clipUser}>Recording</Text>
+            <Text style={[styles.clipUser, { color: colors.textSecondary }]}>Recording</Text>
             <TouchableOpacity
               style={styles.flagButton}
               onPress={() => setFlagModalVisible(true)}
@@ -320,7 +369,7 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
 
           <View style={styles.phraseContainer}>
-            <Text style={styles.phrase}>{extractOriginalPrompt(clip?.phrase || '—')}</Text>
+            <Text style={[styles.phrase, { color: colors.text }]}>{extractOriginalPrompt(clip?.phrase || '—')}</Text>
           </View>
 
           {renderWaveform(mockWaveform)}
@@ -339,9 +388,9 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         )}
 
         {/* Validation Question */}
-        <View style={styles.questionCard}>
-          <Text style={styles.questionTitle}>Is this pronunciation correct?</Text>
-          <Text style={styles.questionDescription}>
+        <View style={[styles.questionCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.questionTitle, { color: colors.text }]}>Is this pronunciation correct?</Text>
+          <Text style={[styles.questionDescription, { color: colors.textSecondary }]}>
             As a native speaker, does this sound accurate to you?
           </Text>
 
@@ -398,11 +447,11 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
 
         {/* Tips */}
-        <View style={styles.tipsCard}>
-          <Text style={styles.tipsTitle}>Validation Tips:</Text>
-          <Text style={styles.tipText}>• Consider regional dialect differences</Text>
-          <Text style={styles.tipText}>• Focus on accuracy, not accent</Text>
-          <Text style={styles.tipText}>• Use "Flag" for unclear or problematic audio</Text>
+        <View style={[styles.tipsCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.tipsTitle, { color: colors.text }]}>Validation Tips:</Text>
+          <Text style={[styles.tipText, { color: colors.textSecondary }]}>• Consider regional dialect differences</Text>
+          <Text style={[styles.tipText, { color: colors.textSecondary }]}>• Focus on accuracy, not accent</Text>
+          <Text style={[styles.tipText, { color: colors.textSecondary }]}>• Use "Flag" for unclear or problematic audio</Text>
         </View>
       </ScrollView>
 
@@ -414,15 +463,15 @@ const ValidationScreen: React.FC<Props> = ({ navigation, route }) => {
         onRequestClose={() => setFlagModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Flag for Review</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Flag for Review</Text>
               <TouchableOpacity onPress={() => setFlagModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalDescription}>
+            <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
               Let an admin know there's an issue with this clip.
             </Text>
 
@@ -514,6 +563,37 @@ const styles = StyleSheet.create({
   languageDescription: {
     fontSize: 14,
     color: '#92400E',
+  },
+  validatorStatsCard: {
+    backgroundColor: '#FFFFFF',
+    margin: width * 0.05,
+    marginTop: 0,
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
   },
   clipCard: {
     backgroundColor: '#FFFFFF',

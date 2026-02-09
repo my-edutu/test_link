@@ -1,29 +1,63 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, TextInput, Alert, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    ScrollView,
+    Image,
+    TextInput,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, SlideInRight } from 'react-native-reanimated';
+import * as ImagePicker from 'expo-image-picker';
+
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
-import { useTheme } from '../context/ThemeContext';
+import { Colors, Gradients, Typography, Layout } from '../constants/Theme';
+import { GlassCard } from '../components/GlassCard';
 
 const { width } = Dimensions.get('window');
 
-const LANGUAGES = ['Yoruba', 'Igbo', 'Hausa', 'Pidgin', 'Efik', 'Kanuri', 'Tiv', 'Other'];
+const LANGUAGES = [
+    { name: 'Yoruba', icon: '🗣️' },
+    { name: 'Igbo', icon: '🍲' },
+    { name: 'Hausa', icon: '🕌' },
+    { name: 'Pidgin', icon: '🇳🇬' },
+    { name: 'Efik', icon: '🌊' },
+    { name: 'Kanuri', icon: '🌵' },
+    { name: 'Tiv', icon: '🌾' },
+    { name: 'Other', icon: '✨' }
+];
+
+const CARTOON_AVATARS = [
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Max',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Zoe'
+];
 
 export default function ModernProfileSetup() {
     const navigation = useNavigation<any>();
-    const { user } = useAuth();
-    const { colors, theme } = useTheme();
+    const { user, refreshProfile } = useAuth();
 
-    const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
-
-    const [selectedLangs, setSelectedLangs] = useState<string[]>(['Yoruba', 'Hausa']);
+    const [step, setStep] = useState(1);
+    const [selectedLangs, setSelectedLangs] = useState<string[]>([]);
     const [otherLang, setOtherLang] = useState('');
     const [loading, setLoading] = useState(false);
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
 
-    // Location State
-    const [country, setCountry] = useState('');
+    // Location & Identity State
+    const [username, setUsername] = useState('');
+    const [country, setCountry] = useState('Nigeria');
     const [state, setState] = useState('');
     const [city, setCity] = useState('');
 
@@ -37,13 +71,78 @@ export default function ModernProfileSetup() {
 
     const isOtherSelected = selectedLangs.includes('Other');
 
-    const completeSetup = async () => {
-        if (!user) return;
-
-        if (!country.trim() || !state.trim() || !city.trim()) {
-            Alert.alert('Missing Details', 'Please fill in your location details (Country, State, Town).');
+    const handleNext = () => {
+        if (step === 1 && selectedLangs.length === 0) {
+            Alert.alert('Selection Required', 'Please select at least one language.');
             return;
         }
+        if (step === 2 && (!username.trim() || !state.trim())) {
+            Alert.alert('Missing Info', 'Please provide a username and your state.');
+            return;
+        }
+
+        if (step === 1) setStep(2);
+        else completeSetup();
+    };
+
+    const pickImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.5,
+            });
+
+            if (!result.canceled) {
+                uploadImage(result.assets[0].uri);
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Error picking image');
+        }
+    };
+
+    const uploadImage = async (uri: string) => {
+        if (!user) return;
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', {
+                uri,
+                name: `avatar-${Date.now()}.jpg`,
+                type: 'image/jpeg',
+            } as any);
+
+            const fileExt = 'jpg';
+            const fileName = `${user.id}/avatar-${Date.now()}.${fileExt}`;
+            const { error: uploadError, data } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, formData, { upsert: true });
+
+            if (uploadError) {
+                // Fallback: If Storage fails, just use the local URI or don't upload (requires bucket setup)
+                console.warn("Upload failed, bucket might not exist:", uploadError);
+                // If bucket fails, we might just store the URI if it was a web url, but it's local.
+                // We'll set it anyway for UI, but it won't persist across devices if local.
+                // For now, let's just set the local URI to avatarUrl and hope fetch works next time, OR try to find a public bucket.
+                // Actually, let's assumes avatars bucket exists. If not, user should create it.
+                throw uploadError;
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(fileName);
+
+            setAvatarUrl(publicUrl);
+        } catch (error: any) {
+            Alert.alert('Upload Error', error.message || 'Failed to upload image');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const completeSetup = async () => {
+        if (!user) return;
 
         const finalLangs = isOtherSelected
             ? [...selectedLangs.filter(l => l !== 'Other'), otherLang].filter(l => l.trim() !== '')
@@ -51,21 +150,39 @@ export default function ModernProfileSetup() {
 
         setLoading(true);
         try {
+            // Use upsert to create profile if it doesn't exist, or update if it does
             const { error } = await supabase
                 .from('profiles')
-                .update({
+                .upsert({
+                    id: user.id, // Clerk user ID
+                    email: user.emailAddresses?.[0]?.emailAddress || user.primaryEmailAddress?.emailAddress,
+                    username: username.toLowerCase().trim(),
+                    full_name: user.fullName || user.firstName || username,
                     interests: finalLangs,
                     country: country,
                     state: state,
                     city: city,
+                    avatar_url: avatarUrl || user.imageUrl, // Use uploaded, or Clerk, or fallback
                     has_completed_onboarding: true
-                })
-                .eq('id', user.id);
+                }, {
+                    onConflict: 'id' // If profile exists, update it
+                });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Profile save error:', error);
+                throw error;
+            }
+
+            // Force refresh of auth state
+            if (refreshProfile) refreshProfile();
+
         } catch (e: any) {
-            console.error(e);
-            Alert.alert('Error', 'Could not save profile. Please try again.');
+            console.error('Profile setup error:', e);
+            if (e.message?.includes('username') || e.code === '23505') {
+                Alert.alert('Username Taken', 'This username is already in use. Please choose another one.');
+            } else {
+                Alert.alert('Error', 'Could not save profile. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
@@ -73,145 +190,146 @@ export default function ModernProfileSetup() {
 
     return (
         <View style={styles.container}>
-            <StatusBar style={theme === 'dark' ? "light" : "dark"} />
+            <StatusBar style="light" translucent backgroundColor="transparent" />
 
-            {/* Vibes - Glow Blobs */}
-            <View style={[styles.glowBlob, { top: -100, left: -100, backgroundColor: colors.primary, opacity: 0.1 }]} />
-            <View style={[styles.glowBlob, { bottom: -100, right: -100, backgroundColor: colors.secondary || colors.primary, opacity: 0.05 }]} />
+            <LinearGradient
+                colors={['#1F0802', '#0D0200']}
+                style={StyleSheet.absoluteFill}
+            />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
                 style={{ flex: 1 }}
             >
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        <MaterialIcons name="chevron-left" size={28} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Complete Profile</Text>
-                    <View style={{ width: 44 }} />
+                    <View style={styles.progressContainer}>
+                        <View style={[styles.progressBase, { width: '100%' }]} />
+                        <Animated.View style={[styles.progressActive, { width: `${(step / 2) * 100}%` }]} />
+                    </View>
+                    <Text style={styles.stepCounter}>STEP {step} OF 2</Text>
                 </View>
 
-                <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {step === 1 ? (
+                        <Animated.View entering={FadeIn.duration(600)} style={styles.stepView}>
+                            <Text style={styles.headline}>Your <Text style={{ color: Colors.dark.primary }}>Heritage</Text></Text>
+                            <Text style={styles.subhead}>Which languages do you speak or want to help preserve?</Text>
 
-                    {/* Welcome Text */}
-                    <View style={styles.topSection}>
-                        <Text style={styles.headline}>Final Touch ✨</Text>
-                        <Text style={styles.subhead}>Let's personalize your LinguaLink experience.</Text>
-                    </View>
+                            <View style={styles.chipGrid}>
+                                {LANGUAGES.map((lang) => {
+                                    const isActive = selectedLangs.includes(lang.name);
+                                    return (
+                                        <TouchableOpacity
+                                            key={lang.name}
+                                            style={[styles.chip, isActive && styles.chipActive]}
+                                            onPress={() => toggleLang(lang.name)}
+                                        >
+                                            <Text style={styles.chipIcon}>{lang.icon}</Text>
+                                            <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{lang.name}</Text>
+                                            {isActive && (
+                                                <MaterialIcons name="check-circle" size={18} color="white" style={styles.checkIcon} />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
 
-                    {/* Language Selection */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>What do you speak?</Text>
-                        <View style={styles.chipGrid}>
-                            {LANGUAGES.map(lang => {
-                                const active = selectedLangs.includes(lang);
-                                return (
-                                    <TouchableOpacity
-                                        key={lang}
-                                        style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
-                                        onPress={() => toggleLang(lang)}
-                                    >
-                                        <Text style={active ? styles.chipTextActive : styles.chipTextInactive}>{lang}</Text>
-                                        {active && <MaterialIcons name="check-circle" size={16} color="white" />}
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-
-                        {isOtherSelected && (
-                            <View style={styles.otherInputWrapper}>
-                                <Text style={styles.inputLabel}>Specify other languages</Text>
-                                <View style={styles.inputContainer}>
+                            {isOtherSelected && (
+                                <GlassCard style={styles.otherInputCard} intensity={20}>
                                     <TextInput
                                         style={styles.textInput}
-                                        placeholder="E.g. Idoma, Ibibio, French..."
-                                        placeholderTextColor={colors.textSecondary}
+                                        placeholder="Specify other languages..."
+                                        placeholderTextColor="rgba(255,255,255,0.4)"
                                         value={otherLang}
                                         onChangeText={setOtherLang}
                                     />
-                                </View>
-                            </View>
-                        )}
-                    </View>
+                                </GlassCard>
+                            )}
+                        </Animated.View>
+                    ) : (
+                        <Animated.View entering={SlideInRight.duration(600)} style={styles.stepView}>
+                            <Text style={styles.headline}>Your <Text style={{ color: Colors.dark.primary }}>Identity</Text></Text>
+                            <Text style={styles.subhead}>How should the community recognize you?</Text>
 
-                    {/* Location Section */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Where are you from?</Text>
-
-                        <View style={styles.inputStack}>
-                            {/* Country Input */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Country</Text>
-                                <View style={styles.inputContainer}>
-                                    <MaterialIcons name="public" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g. Nigeria"
-                                        placeholderTextColor={colors.textSecondary}
-                                        value={country}
-                                        onChangeText={setCountry}
-                                    />
-                                </View>
-                            </View>
-
-                            {/* State Input */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>State</Text>
-                                <View style={styles.inputContainer}>
-                                    <MaterialIcons name="map" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g. Lagos"
-                                        placeholderTextColor={colors.textSecondary}
-                                        value={state}
-                                        onChangeText={setState}
-                                    />
-                                </View>
+                            <View style={styles.form}>
+                                <InputGroup
+                                    label="Username"
+                                    icon="person-outline"
+                                    placeholder="e.g. tunde_heritage"
+                                    value={username}
+                                    onChangeText={setUsername}
+                                />
+                                <InputGroup
+                                    label="State / Region"
+                                    icon="map-outline"
+                                    placeholder="e.g. Lagos"
+                                    value={state}
+                                    onChangeText={setState}
+                                />
+                                <InputGroup
+                                    label="Town / City (Optional)"
+                                    icon="location-outline"
+                                    placeholder="e.g. Ikeja"
+                                    value={city}
+                                    onChangeText={setCity}
+                                />
                             </View>
 
-                            {/* City/Town Input */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Town / City</Text>
-                                <View style={styles.inputContainer}>
-                                    <MaterialIcons name="location-city" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g. Ikeja"
-                                        placeholderTextColor={colors.textSecondary}
-                                        value={city}
-                                        onChangeText={setCity}
-                                    />
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Avatar Selection */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Choose your vibe</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarRow}>
-                            <TouchableOpacity style={styles.avatarUpload}>
-                                <MaterialIcons name="add-a-photo" size={24} color={colors.primary} />
-                            </TouchableOpacity>
-
-                            {['https://lh3.googleusercontent.com/aida-public/AB6AXuCSD8kCKoHcV55KVae7-0y6IKiTAxHep-jh3Ai8BC9-f9xXvu_6vc-fL1kGbJS_hJN8ZQHvovplYB43MXxOUSQ3yGWZnzx41jbSl7dfzWUSFzKgYjq8HX-261evcmK3agCB2WW_dU77zQN9goeCPflqBJFCVM43U3hVZKtK4ulzDIZKaWDOhR4aj2VJAvMNuTh7zzklGU-ctZBP3PV_ItsO_NfKU3dcufw5AN6gvcsAjPvAG86vSY5ALr_V6mc6av6Uoz_7rUfDbi6d',
-                                'https://lh3.googleusercontent.com/aida-public/AB6AXuDXmQd-JqqQFIay0b1wjI4V3ki86ZJcLTtWpXTy-4jSxVp64CwHQOHr24n8695WYcYuWluYc6InQbYZDrvjnqUsjKEt21EaKD8F_PegJsSS_s2_1AIS8ln0XNu-f2SRk2JUnC7xBj8phy83v4v0ETRmjETnHfYZ9LNCRBlhjE__Rz5pgyQt8Fim2xuEbyJegHe1Cv4Z92y7RW67XDPC7fzpYeDeGeVdMNzZ9k9UQ3VFF-2VCJTmiHjFARsYpotzjRpuA2X-pLK-rFzp'].map((uri, idx) => (
-                                    <TouchableOpacity key={idx} style={[styles.avatarContainer, idx === 0 && styles.activeAvatar]}>
-                                        <Image source={{ uri }} style={styles.avatarImg} />
+                            <View style={styles.avatarSection}>
+                                <Text style={styles.label}>Choose an avatar vibe</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarList}>
+                                    <TouchableOpacity style={styles.uploadBtn} onPress={pickImage} disabled={uploading}>
+                                        {avatarUrl && !CARTOON_AVATARS.includes(avatarUrl) ? (
+                                            <Image source={{ uri: avatarUrl }} style={{ width: '100%', height: '100%', borderRadius: 44 }} />
+                                        ) : (
+                                            <Ionicons name="camera-outline" size={32} color={Colors.dark.primary} />
+                                        )}
+                                        {uploading && (
+                                            <View style={StyleSheet.absoluteFill}>
+                                                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 44, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <MaterialIcons name="refresh" size={20} color="white" />
+                                                </View>
+                                            </View>
+                                        )}
                                     </TouchableOpacity>
-                                ))}
-                        </ScrollView>
-                    </View>
+
+                                    {CARTOON_AVATARS.map((url, i) => (
+                                        <TouchableOpacity
+                                            key={i}
+                                            onPress={() => setAvatarUrl(url)}
+                                            style={[styles.avatarPlaceholder, avatarUrl === url && { borderColor: Colors.dark.primary, borderWidth: 2 }]}
+                                        >
+                                            <Image source={{ uri: url }} style={{ width: '100%', height: '100%', borderRadius: 44 }} />
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        </Animated.View>
+                    )}
                 </ScrollView>
 
                 <View style={styles.footer}>
+                    {step === 2 && (
+                        <TouchableOpacity style={styles.backLink} onPress={() => setStep(1)}>
+                            <Text style={styles.backLinkText}>PREVIOUS STEP</Text>
+                        </TouchableOpacity>
+                    )}
                     <TouchableOpacity
-                        style={[styles.enterBtn, loading && { opacity: 0.7 }]}
-                        onPress={completeSetup}
+                        style={styles.mainBtn}
+                        onPress={handleNext}
                         disabled={loading}
                     >
-                        <Text style={styles.enterBtnText}>{loading ? 'Setting up...' : 'Enter the App'}</Text>
-                        {!loading && <MaterialIcons name="rocket-launch" size={20} color="white" />}
+                        <LinearGradient
+                            colors={Gradients.primary}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.btnGradient}
+                        >
+                            <Text style={styles.btnText}>
+                                {loading ? 'Saving...' : step === 1 ? 'Continue' : 'Finish Setup'}
+                            </Text>
+                            {!loading && <MaterialIcons name="chevron-right" size={24} color="white" />}
+                        </LinearGradient>
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
@@ -219,56 +337,228 @@ export default function ModernProfileSetup() {
     );
 }
 
-const createStyles = (colors: any, theme: string) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    glowBlob: { position: 'absolute', width: 300, height: 300, borderRadius: 150, zIndex: -1 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 60, paddingBottom: 16 },
-    backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' },
-    headerTitle: { color: colors.text, fontSize: 18, fontWeight: 'bold' },
+const InputGroup = ({ label, icon, ...props }: any) => (
+    <View style={styles.inputGroup}>
+        <Text style={styles.label}>{label}</Text>
+        <GlassCard style={styles.inputCard} intensity={15} borderColor="rgba(255,255,255,0.15)">
+            <View style={styles.inputContent}>
+                <View style={styles.iconContainer}>
+                    <Ionicons name={icon} size={22} color={Colors.dark.primary} />
+                </View>
+                <TextInput
+                    style={styles.textInput}
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    autoCapitalize="none"
+                    selectionColor={Colors.dark.primary}
+                    {...props}
+                />
+            </View>
+        </GlassCard>
+    </View>
+);
 
-    content: { paddingHorizontal: 20, paddingBottom: 40 },
-    topSection: { marginBottom: 32 },
-    headline: { color: colors.text, fontSize: 32, fontWeight: 'bold', marginBottom: 8 },
-    subhead: { color: colors.textSecondary, fontSize: 16 },
-
-    section: { marginBottom: 32 },
-    sectionTitle: { color: colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 16 },
-
-    chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, height: 44, borderRadius: 22, gap: 8, borderWidth: 1 },
-    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 8 },
-    chipInactive: { backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#F5F5F5', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : '#E0E0E0' },
-    chipTextActive: { color: 'white', fontWeight: 'bold' },
-    chipTextInactive: { color: colors.textSecondary, fontWeight: '600' },
-
-    otherInputWrapper: { marginTop: 16, gap: 8 },
-
-    inputStack: { gap: 16 },
-    inputGroup: { gap: 8 },
-    inputLabel: { color: colors.text, fontSize: 15, fontWeight: '600', marginLeft: 4 },
-    inputContainer: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#F5F5F5',
-        height: 56, borderRadius: 16,
-        paddingHorizontal: 16,
-        borderWidth: 1, borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : '#E0E0E0'
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#050100' }, // Darker background
+    header: {
+        paddingTop: Platform.OS === 'ios' ? 60 : 50,
+        paddingHorizontal: 24,
+        alignItems: 'center',
+        marginBottom: 20
     },
-    inputIcon: { marginRight: 12 },
+    progressContainer: {
+        width: '100%',
+        height: 6,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 3,
+        marginBottom: 12,
+        overflow: 'hidden'
+    },
+    progressBase: {
+        // Unused now with new structure but kept for safety
+    },
+    progressActive: {
+        height: '100%',
+        backgroundColor: Colors.dark.primary,
+        borderRadius: 3
+    },
+    stepCounter: {
+        ...Typography.caption,
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 2,
+        fontSize: 11,
+        fontWeight: '600'
+    },
+    scrollContent: {
+        paddingHorizontal: 24,
+        paddingBottom: 40
+    },
+    stepView: {
+        flex: 1
+    },
+    headline: {
+        fontSize: 34,
+        fontWeight: '700',
+        color: 'white',
+        marginBottom: 8,
+        letterSpacing: -0.5,
+        lineHeight: 40
+    },
+    subhead: {
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: 32,
+        lineHeight: 24
+    },
+    chipGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12
+    },
+    chip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12, // Taller touch target
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        gap: 10
+    },
+    chipActive: {
+        backgroundColor: 'rgba(255, 138, 0, 0.15)', // Tinted background
+        borderColor: Colors.dark.primary,
+    },
+    chipIcon: {
+        fontSize: 20
+    },
+    chipText: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.7)'
+    },
+    chipTextActive: {
+        color: 'white',
+        fontWeight: '600'
+    },
+    checkIcon: {
+        marginLeft: 4
+    },
+    otherInputCard: {
+        marginTop: 20,
+        paddingHorizontal: 16,
+        height: 60, // Taller
+        justifyContent: 'center'
+    },
+    form: {
+        gap: 24
+    },
+    inputGroup: {
+        gap: 10
+    },
+    label: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.8)',
+        marginLeft: 4,
+        letterSpacing: 0.5
+    },
+    inputCard: {
+        padding: 0,
+        height: 64, // significantly taller for better touch area
+        backgroundColor: 'rgba(255,255,255,0.03)', // Slight tint
+        borderRadius: 20,
+        justifyContent: 'center'
+    },
+    inputContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        width: '100%',
+        height: '100%'
+    },
+    iconContainer: {
+        width: 32,
+        alignItems: 'center',
+        marginRight: 12,
+        opacity: 0.9
+    },
+    inputIcon: {
+        // unused
+    },
     textInput: {
         flex: 1,
-        color: colors.text,
-        fontSize: 16,
-        backgroundColor: 'transparent', // Explicitly transparent to remove "white lines"
-        padding: 0, // Remove default padding that might cause sizing issues
+        fontSize: 17, // Larger text for better readability
+        color: 'white',
+        height: '100%',
+        fontWeight: '500'
     },
-
-    avatarRow: { gap: 16 },
-    avatarUpload: { width: 80, height: 80, borderRadius: 40, backgroundColor: theme === 'dark' ? 'rgba(255,109,0,0.1)' : '#FFF5EB', borderStyle: 'dashed', borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-    avatarContainer: { width: 80, height: 80, borderRadius: 40, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent' },
-    activeAvatar: { borderColor: colors.primary },
-    avatarImg: { width: '100%', height: '100%' },
-
-    footer: { padding: 24, paddingBottom: 40, borderTopWidth: 1, borderTopColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#E0E0E0' },
-    enterBtn: { backgroundColor: colors.primary, height: 60, borderRadius: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, shadowColor: colors.primary, shadowOpacity: 0.4, shadowRadius: 12 },
-    enterBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' }
+    avatarSection: {
+        marginTop: 40,
+        gap: 16
+    },
+    avatarList: {
+        gap: 16,
+        paddingRight: 24
+    },
+    uploadBtn: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        backgroundColor: 'rgba(255, 138, 0, 0.08)',
+        borderStyle: 'dashed',
+        borderWidth: 2,
+        borderColor: Colors.dark.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden'
+    },
+    avatarPlaceholder: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden'
+    },
+    footer: {
+        padding: 24,
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        alignItems: 'center',
+        gap: 20
+    },
+    mainBtn: {
+        width: '100%',
+        height: 62,
+        borderRadius: 31,
+        overflow: 'hidden',
+        shadowColor: Colors.dark.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8
+    },
+    btnGradient: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10
+    },
+    btnText: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: 'white',
+        letterSpacing: 0.5
+    },
+    backLink: {
+        padding: 12
+    },
+    backLinkText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 2
+    }
 });
