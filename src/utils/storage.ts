@@ -1,5 +1,7 @@
-import { supabase } from '../supabaseClient';
+import { supabase, getSupabaseToken } from '../supabaseClient';
 import * as FileSystem from 'expo-file-system/legacy';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 
 export interface UploadResult {
   success: boolean;
@@ -12,96 +14,73 @@ export interface UploadVideoResult extends UploadResult {
 }
 
 /**
- * Upload an audio file to Supabase Storage
- * @param fileUri - Local file URI from Expo AV recording
- * @param userId - User ID for organizing files
- * @param fileName - Optional custom filename
- * @returns Promise<UploadResult>
+ * Upload an audio file to Supabase Storage using native streaming
+ * @param fileUri - Local file URI
+ * @param userId - User ID
+ * @param fileName - Optional filename
+ * @param onProgress - Optional callback (0-100)
  */
 export const uploadAudioFile = async (
   fileUri: string,
   userId: string,
-  fileName?: string
+  fileName?: string,
+  onProgress?: (progress: number) => void
 ): Promise<UploadResult> => {
   try {
-    console.log('Starting audio file upload...');
-    console.log('File URI:', fileUri);
-    console.log('User ID:', userId);
+    const token = getSupabaseToken();
+    if (!token) throw new Error('No authentication token found');
 
-    // Generate a unique filename if not provided
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 15);
     const finalFileName = fileName || `audio_${timestamp}_${randomId}.m4a`;
-
-    // Create the storage path
     const storagePath = `${userId}/${finalFileName}`;
 
-    console.log('Storage path:', storagePath);
+    // Construct the direct storage URL
+    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/voice-clips/${storagePath}`;
 
-    // Normalize URI: if content://, copy to cache to obtain a file:// path
+    // Normalize URI
     let sourceUri = fileUri;
     if (sourceUri?.startsWith('content://')) {
-      const destPath = `${(FileSystem as any).cacheDirectory}upload_${timestamp}_${randomId}.bin`;
-      console.log('Copying content URI to cache:', destPath);
+      const destPath = `${FileSystem.cacheDirectory}upload_${timestamp}_${randomId}.m4a`;
       await FileSystem.copyAsync({ from: sourceUri, to: destPath });
       sourceUri = destPath;
     }
 
-    if (!sourceUri || !(sourceUri.startsWith('file://') || sourceUri.startsWith((FileSystem as any).cacheDirectory || ''))) {
-      throw new Error('Invalid audio URI');
+    const task = FileSystem.createUploadTask(
+      uploadUrl,
+      sourceUri,
+      {
+        httpMethod: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'audio/m4a',
+          'x-upsert': 'false',
+        },
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      },
+      (data) => {
+        if (onProgress) {
+          const progress = (data.totalBytesSent / data.totalBytesExpectedToSend) * 100;
+          onProgress(progress);
+        }
+      }
+    );
+
+    const result = await task.uploadAsync();
+
+    if (!result || result.status !== 200) {
+      throw new Error(`Upload failed with status ${result?.status}: ${result?.body}`);
     }
 
-    // Read the file as base64
-    const base64Data = await FileSystem.readAsStringAsync(sourceUri, {
-      encoding: 'base64',
-    });
-
-    console.log('File read successfully, size:', base64Data.length);
-
-    // Convert base64 to Uint8Array
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from('voice-clips')
-      .upload(storagePath, bytes, {
-        contentType: 'audio/m4a',
-        cacheControl: '3600',
-        upsert: false,
-      });
-
-    if (error) {
-      console.error('Supabase storage upload error:', error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
-    console.log('File uploaded successfully:', data);
-
-    // Get the public URL
+    // Get public URL
     const { data: urlData } = supabase.storage
       .from('voice-clips')
       .getPublicUrl(storagePath);
 
-    const publicUrl = urlData.publicUrl;
-    console.log('Public URL:', publicUrl);
-
-    return {
-      success: true,
-      url: publicUrl,
-    };
+    return { success: true, url: urlData.publicUrl };
   } catch (error) {
-    console.error('Error uploading audio file:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
+    console.error('Error uploading audio:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 };
 
@@ -174,35 +153,62 @@ export const deleteAudioFile = async (filePath: string): Promise<boolean> => {
 };
 
 /**
- * Upload a video file to Supabase Storage (bucket: videos)
+ * Upload a video file to Supabase Storage (bucket: videos) using native streaming
+ * @param fileUri - Local file URI
+ * @param userId - User ID
+ * @param fileName - Optional filename
+ * @param contentType - Mime type
+ * @param onProgress - Optional callback (0-100)
  */
 export const uploadVideoFile = async (
   fileUri: string,
   userId: string,
   fileName?: string,
-  contentType: string = 'video/mp4'
+  contentType: string = 'video/mp4',
+  onProgress?: (progress: number) => void
 ): Promise<UploadVideoResult> => {
   try {
+    const token = getSupabaseToken();
+    if (!token) throw new Error('No authentication token found');
+
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 15);
     const finalFileName = fileName || `video_${timestamp}_${randomId}.mp4`;
     const storagePath = `${userId}/${finalFileName}`;
 
-    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
-      encoding: 'base64',
-    });
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+    // Construct the direct storage URL for videos bucket
+    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/videos/${storagePath}`;
 
-    const { error } = await supabase.storage
-      .from('videos')
-      .upload(storagePath, bytes, { contentType, cacheControl: '3600', upsert: false });
-    if (error) return { success: false, error: error.message };
+    const task = FileSystem.createUploadTask(
+      uploadUrl,
+      fileUri,
+      {
+        httpMethod: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': contentType,
+          'x-upsert': 'false',
+        },
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      },
+      (data) => {
+        if (onProgress) {
+          const progress = (data.totalBytesSent / data.totalBytesExpectedToSend) * 100;
+          onProgress(progress);
+        }
+      }
+    );
+
+    const result = await task.uploadAsync();
+
+    if (!result || result.status !== 200) {
+      throw new Error(`Video upload failed with status ${result?.status}: ${result?.body}`);
+    }
 
     const { data: urlData } = supabase.storage.from('videos').getPublicUrl(storagePath);
     return { success: true, url: urlData.publicUrl };
   } catch (e) {
+    console.error('Error uploading video:', e);
     return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
   }
 };

@@ -12,8 +12,11 @@ import {
   TextInput,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -125,6 +128,7 @@ const mockInfluentialUsers: InfluentialUser[] = [
 ];
 
 const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
+  const { colors, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'Suggested' | 'Influencers' | 'Search' | 'Sync'>('Suggested');
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState(mockSuggestedUsers);
@@ -137,10 +141,10 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
         users.map(user =>
           user.id === userId
             ? {
-                ...user,
-                isFollowing: !user.isFollowing,
-                followers: user.isFollowing ? user.followers - 1 : user.followers + 1
-              }
+              ...user,
+              isFollowing: !user.isFollowing,
+              followers: user.isFollowing ? user.followers - 1 : user.followers + 1
+            }
             : user
         )
       );
@@ -149,10 +153,10 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
         users.map(user =>
           user.id === userId
             ? {
-                ...user,
-                isFollowing: !user.isFollowing,
-                followers: user.isFollowing ? user.followers - 1 : user.followers + 1
-              }
+              ...user,
+              isFollowing: !user.isFollowing,
+              followers: user.isFollowing ? user.followers - 1 : user.followers + 1
+            }
             : user
         )
       );
@@ -190,28 +194,28 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
   };
 
   const renderSuggestedUser = ({ item }: { item: SuggestedUser }) => (
-    <View style={styles.userCard}>
+    <View style={[styles.userCard, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : '#000' }]}>
       <View style={styles.userHeader}>
         <TouchableOpacity
           style={styles.userInfo}
           onPress={() => navigation.navigate('UserProfile', { user: item })}
         >
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}>
             <Text style={styles.avatarText}>{item.avatar}</Text>
           </View>
           <View style={styles.userDetails}>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{item.name}</Text>
+              <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
               {item.isVerified && (
                 <Ionicons name="checkmark-circle" size={16} color="#10B981" />
               )}
             </View>
-            <Text style={styles.userUsername}>@{item.username}</Text>
+            <Text style={[styles.userUsername, { color: colors.textSecondary }]}>@{item.username}</Text>
             <View style={styles.userMeta}>
-              <View style={styles.languageTag}>
+              <View style={[styles.languageTag, { backgroundColor: isDark ? 'rgba(255, 138, 0, 0.15)' : '#FEF3E2' }]}>
                 <Text style={styles.languageText}>{item.language}</Text>
               </View>
-              <Text style={styles.metaText}>• {item.followers.toLocaleString()} followers</Text>
+              <Text style={[styles.metaText, { color: colors.textSecondary }]}>• {item.followers.toLocaleString()} followers</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -219,59 +223,61 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.followButton,
-            item.isFollowing && styles.followingButton
+            { backgroundColor: colors.primary },
+            item.isFollowing && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }
           ]}
           onPress={() => handleFollow(item.id, 'suggested')}
         >
           <Text style={[
             styles.followButtonText,
-            item.isFollowing && styles.followingButtonText
+            { color: '#FFFFFF' },
+            item.isFollowing && { color: colors.textSecondary }
           ]}>
             {item.isFollowing ? 'Following' : 'Follow'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.userBio}>{item.bio}</Text>
+      <Text style={[styles.userBio, { color: colors.textSecondary }]}>{item.bio}</Text>
 
       <View style={styles.userStats}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{item.posts}</Text>
-          <Text style={styles.statLabel}>Posts</Text>
+          <Text style={[styles.statNumber, { color: colors.text }]}>{item.posts}</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{item.mutualFriends}</Text>
-          <Text style={styles.statLabel}>Mutual</Text>
+          <Text style={[styles.statNumber, { color: colors.text }]}>{item.mutualFriends}</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Mutual</Text>
         </View>
         <View style={styles.statItem}>
           <Text style={styles.reasonText}>{item.reason}</Text>
-          <Text style={styles.activityText}>{item.recentActivity}</Text>
+          <Text style={[styles.activityText, { color: colors.textMuted }]}>{item.recentActivity}</Text>
         </View>
       </View>
     </View>
   );
 
   const renderInfluentialUser = ({ item }: { item: InfluentialUser }) => (
-    <View style={styles.influencerCard}>
+    <View style={[styles.influencerCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
       <View style={styles.influencerHeader}>
         <TouchableOpacity
           style={styles.userInfo}
           onPress={() => navigation.navigate('UserProfile', { user: item })}
         >
-          <View style={[styles.avatar, styles.influencerAvatar]}>
+          <View style={[styles.avatar, styles.influencerAvatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6', borderColor: colors.primary }]}>
             <Text style={styles.avatarText}>{item.avatar}</Text>
           </View>
           <View style={styles.userDetails}>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{item.name}</Text>
+              <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
               {item.isVerified && (
                 <Ionicons name="checkmark-circle" size={16} color="#10B981" />
               )}
-              <View style={styles.influencerBadge}>
+              <View style={[styles.influencerBadge, { backgroundColor: colors.primary }]}>
                 <Text style={styles.influencerBadgeText}>TOP</Text>
               </View>
             </View>
-            <Text style={styles.userUsername}>@{item.username}</Text>
+            <Text style={[styles.userUsername, { color: colors.textSecondary }]}>@{item.username}</Text>
             <Text style={styles.specialtyText}>{item.specialty}</Text>
           </View>
         </TouchableOpacity>
@@ -279,35 +285,37 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.followButton,
-            item.isFollowing && styles.followingButton
+            { backgroundColor: colors.primary },
+            item.isFollowing && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }
           ]}
           onPress={() => handleFollow(item.id, 'influential')}
         >
           <Text style={[
             styles.followButtonText,
-            item.isFollowing && styles.followingButtonText
+            { color: '#FFFFFF' },
+            item.isFollowing && { color: colors.textSecondary }
           ]}>
             {item.isFollowing ? 'Following' : 'Follow'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.influencerStats}>
+      <View style={[styles.influencerStats, { backgroundColor: colors.background }]}>
         <View style={styles.influencerStatItem}>
-          <Text style={styles.influencerStatNumber}>
+          <Text style={[styles.influencerStatNumber, { color: colors.text }]}>
             {item.followers > 1000 ? `${(item.followers / 1000).toFixed(1)}K` : item.followers}
           </Text>
-          <Text style={styles.influencerStatLabel}>Followers</Text>
+          <Text style={[styles.influencerStatLabel, { color: colors.textSecondary }]}>Followers</Text>
         </View>
         <View style={styles.influencerStatItem}>
-          <Text style={styles.influencerStatNumber}>{item.engagement}%</Text>
-          <Text style={styles.influencerStatLabel}>Engagement</Text>
+          <Text style={[styles.influencerStatNumber, { color: colors.text }]}>{item.engagement}%</Text>
+          <Text style={[styles.influencerStatLabel, { color: colors.textSecondary }]}>Engagement</Text>
         </View>
         <View style={styles.influencerStatItem}>
-          <Text style={styles.influencerStatNumber}>
+          <Text style={[styles.influencerStatNumber, { color: colors.text }]}>
             {item.weeklyViews > 1000 ? `${(item.weeklyViews / 1000).toFixed(0)}K` : item.weeklyViews}
           </Text>
-          <Text style={styles.influencerStatLabel}>Weekly Views</Text>
+          <Text style={[styles.influencerStatLabel, { color: colors.textSecondary }]}>Weekly Views</Text>
         </View>
       </View>
     </View>
@@ -315,38 +323,38 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
 
   const renderSyncSection = () => (
     <View style={styles.syncSection}>
-      <View style={styles.syncCard}>
-        <Ionicons name="people" size={48} color="#FF8A00" />
-        <Text style={styles.syncTitle}>Find Your Friends</Text>
-        <Text style={styles.syncDescription}>
+      <View style={[styles.syncCard, { backgroundColor: colors.card }]}>
+        <Ionicons name="people" size={48} color={colors.primary} />
+        <Text style={[styles.syncTitle, { color: colors.text }]}>Find Your Friends</Text>
+        <Text style={[styles.syncDescription, { color: colors.textSecondary }]}>
           Sync your contacts to find friends who are already using Lingualink AI
         </Text>
-        <TouchableOpacity style={styles.syncButton} onPress={syncContacts}>
+        <TouchableOpacity style={[styles.syncButton, { backgroundColor: colors.primary }]} onPress={syncContacts}>
           <Text style={styles.syncButtonText}>Sync Contacts</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.syncCard}>
+      <View style={[styles.syncCard, { backgroundColor: colors.card }]}>
         <Ionicons name="share-social" size={48} color="#10B981" />
-        <Text style={styles.syncTitle}>Invite Friends</Text>
-        <Text style={styles.syncDescription}>
+        <Text style={[styles.syncTitle, { color: colors.text }]}>Invite Friends</Text>
+        <Text style={[styles.syncDescription, { color: colors.textSecondary }]}>
           Invite your friends to join you on your language learning journey
         </Text>
-        <TouchableOpacity style={[styles.syncButton, styles.inviteButton]}>
-          <Text style={[styles.syncButtonText, styles.inviteButtonText]}>
+        <TouchableOpacity style={[styles.syncButton, styles.inviteButton, { borderColor: colors.primary }]}>
+          <Text style={[styles.syncButtonText, { color: colors.primary }]}>
             Send Invites
           </Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.syncCard}>
+      <View style={[styles.syncCard, { backgroundColor: colors.card }]}>
         <Ionicons name="scan" size={48} color="#8B5CF6" />
-        <Text style={styles.syncTitle}>QR Code</Text>
-        <Text style={styles.syncDescription}>
+        <Text style={[styles.syncTitle, { color: colors.text }]}>QR Code</Text>
+        <Text style={[styles.syncDescription, { color: colors.textSecondary }]}>
           Share your QR code or scan someone else's to connect instantly
         </Text>
-        <TouchableOpacity style={[styles.syncButton, styles.qrButton]}>
-          <Text style={[styles.syncButtonText, styles.qrButtonText]}>
+        <TouchableOpacity style={[styles.syncButton, styles.qrButton, { borderColor: '#8B5CF6' }]}>
+          <Text style={[styles.syncButtonText, { color: '#8B5CF6' }]}>
             My QR Code
           </Text>
         </TouchableOpacity>
@@ -355,156 +363,163 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#FF8A00" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Discover People</Text>
-        <TouchableOpacity>
-          <Ionicons name="filter" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
 
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        {['Suggested', 'Influencers', 'Search', 'Sync'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[
-              styles.tab,
-              activeTab === tab && styles.activeTab
-            ]}
-            onPress={() => setActiveTab(tab as typeof activeTab)}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === tab && styles.activeTabText
-            ]}>
-              {tab}
-            </Text>
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Search Bar */}
-      {activeTab === 'Search' && (
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={20} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by name, username, or language..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={performSearch}
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity style={styles.searchButton} onPress={performSearch}>
-            <Text style={styles.searchButtonText}>Search</Text>
+          <Text style={styles.headerTitle}>Discover People</Text>
+          <TouchableOpacity>
+            <Ionicons name="filter" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      )}
 
-      {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'Suggested' && (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Suggested for You</Text>
-              <Text style={styles.sectionSubtitle}>
-                Based on your interests and activity
+        {/* Tab Navigation */}
+        <View style={[styles.tabContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          {['Suggested', 'Influencers', 'Search', 'Sync'].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.tab,
+                activeTab === tab && { backgroundColor: colors.primary }
+              ]}
+              onPress={() => setActiveTab(tab as typeof activeTab)}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: colors.textSecondary },
+                activeTab === tab && { color: '#FFFFFF' }
+              ]}>
+                {tab}
               </Text>
-            </View>
-            <FlatList
-              data={suggestedUsers}
-              renderItem={renderSuggestedUser}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.usersList}
-            />
-          </View>
-        )}
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        {activeTab === 'Influencers' && (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Top Language Influencers</Text>
-              <Text style={styles.sectionSubtitle}>
-                Follow the most influential language creators
-              </Text>
-            </View>
-            <FlatList
-              data={influentialUsers}
-              renderItem={renderInfluentialUser}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.usersList}
-            />
-          </View>
-        )}
-
+        {/* Search Bar */}
         {activeTab === 'Search' && (
-          <View>
-            {searchResults.length > 0 ? (
-              <View>
-                <Text style={styles.searchResultsTitle}>
-                  Search Results ({searchResults.length})
-                </Text>
-                <FlatList
-                  data={searchResults}
-                  renderItem={renderSuggestedUser}
-                  keyExtractor={(item) => item.id}
-                  scrollEnabled={false}
-                  contentContainerStyle={styles.usersList}
-                />
-              </View>
-            ) : searchQuery.length > 0 ? (
-              <View style={styles.noResults}>
-                <Ionicons name="search" size={48} color="#9CA3AF" />
-                <Text style={styles.noResultsTitle}>No results found</Text>
-                <Text style={styles.noResultsText}>
-                  Try searching for a different name, username, or language
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.searchPrompt}>
-                <Ionicons name="search" size={48} color="#FF8A00" />
-                <Text style={styles.searchPromptTitle}>Discover New People</Text>
-                <Text style={styles.searchPromptText}>
-                  Search for users by name, username, or the language they speak
-                </Text>
-                <View style={styles.searchSuggestions}>
-                  <Text style={styles.suggestionsTitle}>Popular searches:</Text>
-                  {['Igbo', 'Yoruba', 'Hausa', 'teachers', 'storytellers'].map((suggestion) => (
-                    <TouchableOpacity
-                      key={suggestion}
-                      style={styles.suggestionTag}
-                      onPress={() => {
-                        setSearchQuery(suggestion);
-                        performSearch();
-                      }}
-                    >
-                      <Text style={styles.suggestionText}>{suggestion}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
+          <View style={[styles.searchContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+            <View style={[styles.searchBar, { backgroundColor: colors.inputBackground }]}>
+              <Ionicons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search by name, username, or language..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onSubmitEditing={performSearch}
+                placeholderTextColor={colors.textMuted}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity style={[styles.searchButton, { backgroundColor: colors.primary }]} onPress={performSearch}>
+              <Text style={styles.searchButtonText}>Search</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {activeTab === 'Sync' && renderSyncSection()}
-      </ScrollView>
+        {/* Content */}
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {activeTab === 'Suggested' && (
+            <View>
+              <View style={[styles.sectionHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Suggested for You</Text>
+                <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+                  Based on your interests and activity
+                </Text>
+              </View>
+              <FlatList
+                data={suggestedUsers}
+                renderItem={renderSuggestedUser}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                contentContainerStyle={styles.usersList}
+              />
+            </View>
+          )}
+
+          {activeTab === 'Influencers' && (
+            <View>
+              <View style={[styles.sectionHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Top Language Influencers</Text>
+                <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+                  Follow the most influential language creators
+                </Text>
+              </View>
+              <FlatList
+                data={influentialUsers}
+                renderItem={renderInfluentialUser}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                contentContainerStyle={styles.usersList}
+              />
+            </View>
+          )}
+
+          {activeTab === 'Search' && (
+            <View>
+              {searchResults.length > 0 ? (
+                <View>
+                  <Text style={[styles.searchResultsTitle, { color: colors.text }]}>
+                    Search Results ({searchResults.length})
+                  </Text>
+                  <FlatList
+                    data={searchResults}
+                    renderItem={renderSuggestedUser}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    contentContainerStyle={styles.usersList}
+                  />
+                </View>
+              ) : searchQuery.length > 0 ? (
+                <View style={styles.noResults}>
+                  <Ionicons name="search" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.noResultsTitle, { color: colors.textSecondary }]}>No results found</Text>
+                  <Text style={[styles.noResultsText, { color: colors.textSecondary }]}>
+                    Try searching for a different name, username, or language
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.searchPrompt}>
+                  <Ionicons name="search" size={48} color={colors.primary} />
+                  <Text style={[styles.searchPromptTitle, { color: colors.text }]}>Discover New People</Text>
+                  <Text style={[styles.searchPromptText, { color: colors.textSecondary }]}>
+                    Search for users by name, username, or the language they speak
+                  </Text>
+                  <View style={styles.searchSuggestions}>
+                    <Text style={[styles.suggestionsTitle, { color: colors.textSecondary }]}>Popular searches:</Text>
+                    {['Igbo', 'Yoruba', 'Hausa', 'teachers', 'storytellers'].map((suggestion) => (
+                      <TouchableOpacity
+                        key={suggestion}
+                        style={[styles.suggestionTag, { backgroundColor: colors.card }]}
+                        onPress={() => {
+                          setSearchQuery(suggestion);
+                          performSearch();
+                        }}
+                      >
+                        <Text style={[styles.suggestionText, { color: colors.textSecondary }]}>{suggestion}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {activeTab === 'Sync' && renderSyncSection()}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -512,7 +527,6 @@ const ContactDiscoveryScreen: React.FC<any> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   header: {
     flexDirection: 'row',
@@ -520,7 +534,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: width * 0.05,
     paddingVertical: 16,
-    backgroundColor: '#FF8A00',
   },
   headerTitle: {
     fontSize: 18,
@@ -529,11 +542,9 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
     paddingHorizontal: width * 0.05,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   tab: {
     flex: 1,
@@ -542,31 +553,21 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: 2,
   },
-  activeTab: {
-    backgroundColor: '#FF8A00',
-  },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#6B7280',
-  },
-  activeTabText: {
-    color: '#FFFFFF',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -576,10 +577,8 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     fontSize: 16,
-    color: '#1F2937',
   },
   searchButton: {
-    backgroundColor: '#FF8A00',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -595,30 +594,24 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: width * 0.05,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
   },
   usersList: {
     paddingHorizontal: width * 0.05,
     paddingTop: 8,
   },
   userCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -639,14 +632,12 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   influencerAvatar: {
     borderWidth: 2,
-    borderColor: '#FF8A00',
   },
   avatarText: {
     fontSize: 24,
@@ -662,12 +653,10 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
     marginRight: 4,
   },
   userUsername: {
     fontSize: 14,
-    color: '#6B7280',
     marginBottom: 4,
   },
   userMeta: {
@@ -675,7 +664,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   languageTag: {
-    backgroundColor: '#FEF3E2',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -688,28 +676,18 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 12,
-    color: '#9CA3AF',
   },
   followButton: {
-    backgroundColor: '#FF8A00',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  followingButton: {
-    backgroundColor: '#E5E7EB',
-  },
   followButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#FFFFFF',
-  },
-  followingButtonText: {
-    color: '#6B7280',
   },
   userBio: {
     fontSize: 14,
-    color: '#4B5563',
     marginBottom: 12,
     lineHeight: 20,
   },
@@ -724,11 +702,9 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
   },
   statLabel: {
     fontSize: 12,
-    color: '#6B7280',
     marginTop: 2,
   },
   reasonText: {
@@ -739,17 +715,14 @@ const styles = StyleSheet.create({
   },
   activityText: {
     fontSize: 10,
-    color: '#9CA3AF',
     marginTop: 2,
     textAlign: 'center',
   },
   influencerCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#FF8A00',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -763,7 +736,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   influencerBadge: {
-    backgroundColor: '#FF8A00',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -782,7 +754,6 @@ const styles = StyleSheet.create({
   influencerStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#F8F9FA',
     borderRadius: 12,
     paddingVertical: 12,
   },
@@ -790,133 +761,119 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   influencerStatNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
   },
   influencerStatLabel: {
     fontSize: 12,
-    color: '#6B7280',
     marginTop: 2,
   },
-  searchResultsTitle: {
+  syncSection: {
+    padding: 16,
+  },
+  syncCard: {
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  syncTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  syncDescription: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  syncButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+  },
+  syncButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 12,
+  },
+  inviteButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+  },
+  inviteButtonText: {},
+  qrButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+  },
+  qrButtonText: {},
+  searchResultsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: width * 0.05,
+    marginTop: 16,
+    marginBottom: 8,
   },
   noResults: {
     alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: width * 0.05,
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 40,
   },
   noResultsTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#4B5563',
     marginTop: 16,
-    marginBottom: 8,
   },
   noResultsText: {
     fontSize: 14,
-    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 20,
+    marginTop: 8,
   },
   searchPrompt: {
     alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: width * 0.05,
+    justifyContent: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 30,
   },
   searchPromptTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: '700',
     marginTop: 16,
-    marginBottom: 8,
+    textAlign: 'center',
   },
   searchPromptText: {
     fontSize: 14,
-    color: '#6B7280',
     textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 32,
     lineHeight: 20,
-    marginBottom: 24,
   },
   searchSuggestions: {
-    alignItems: 'center',
+    width: '100%',
+    alignItems: 'flex-start',
   },
   suggestionsTitle: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#4B5563',
+    fontWeight: '600',
     marginBottom: 12,
   },
   suggestionTag: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginHorizontal: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
     marginBottom: 8,
   },
   suggestionText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  syncSection: {
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 16,
-  },
-  syncCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  syncTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  syncDescription: {
     fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  syncButton: {
-    backgroundColor: '#FF8A00',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
-  },
-  inviteButton: {
-    backgroundColor: '#10B981',
-  },
-  qrButton: {
-    backgroundColor: '#8B5CF6',
-  },
-  syncButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
-  },
-  inviteButtonText: {
-    color: '#FFFFFF',
-  },
-  qrButtonText: {
-    color: '#FFFFFF',
   },
 });
 

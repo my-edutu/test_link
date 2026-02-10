@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme } from '../context/ThemeContext';
 
 interface EditProfileModalProps {
     visible: boolean;
@@ -30,6 +31,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
     onUpdate,
 }) => {
     const { user } = useAuth();
+    const { colors, isDark } = useTheme();
     const [loading, setLoading] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -99,76 +101,76 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
         >
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.modalOverlay}
+                style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
             >
-                <View style={styles.modalContent}>
+                <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>Edit Profile</Text>
+                        <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                            <Ionicons name="close" size={24} color="#FFF" />
+                            <Ionicons name="close" size={24} color={colors.text} />
                         </TouchableOpacity>
                     </View>
 
                     <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
                         {/* Full Name */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Full Name</Text>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>Full Name</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text, borderColor: colors.border }]}
                                 value={formData.full_name}
                                 onChangeText={(text) => handleChange('full_name', text)}
                                 placeholder="Enter your full name"
-                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                placeholderTextColor={colors.textMuted}
                             />
                         </View>
 
                         {/* Bio */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Bio</Text>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>Bio</Text>
                             <TextInput
-                                style={[styles.input, styles.textArea]}
+                                style={[styles.input, styles.textArea, { backgroundColor: colors.inputBackground, color: colors.text, borderColor: colors.border }]}
                                 value={formData.bio}
                                 onChangeText={(text) => handleChange('bio', text)}
                                 placeholder="Tell us about yourself..."
-                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                placeholderTextColor={colors.textMuted}
                                 multiline
                                 maxLength={150}
                             />
-                            <Text style={styles.charCount}>{formData.bio.length}/150</Text>
+                            <Text style={[styles.charCount, { color: colors.textMuted }]}>{formData.bio.length}/150</Text>
                         </View>
 
                         {/* Location Fields */}
                         <View style={styles.row}>
                             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                                <Text style={styles.label}>Country</Text>
+                                <Text style={[styles.label, { color: colors.textSecondary }]}>Country</Text>
                                 <TextInput
-                                    style={styles.input}
+                                    style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text, borderColor: colors.border }]}
                                     value={formData.country}
                                     onChangeText={(text) => handleChange('country', text)}
                                     placeholder="Country"
-                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    placeholderTextColor={colors.textMuted}
                                 />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                                <Text style={styles.label}>State</Text>
+                                <Text style={[styles.label, { color: colors.textSecondary }]}>State</Text>
                                 <TextInput
-                                    style={styles.input}
+                                    style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text, borderColor: colors.border }]}
                                     value={formData.state}
                                     onChangeText={(text) => handleChange('state', text)}
                                     placeholder="State"
-                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    placeholderTextColor={colors.textMuted}
                                 />
                             </View>
                         </View>
 
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>City</Text>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>City</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text, borderColor: colors.border }]}
                                 value={formData.city}
                                 onChangeText={(text) => handleChange('city', text)}
                                 placeholder="City"
-                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                placeholderTextColor={colors.textMuted}
                             />
                         </View>
 
@@ -176,7 +178,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
                     <View style={styles.footer}>
                         <TouchableOpacity
-                            style={styles.saveBtn}
+                            style={[styles.saveBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
                             onPress={handleSave}
                             disabled={loading}
                         >
@@ -196,17 +198,14 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
 const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.8)',
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: '#1C1022',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         height: '80%',
         padding: 24,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
     },
     header: {
         flexDirection: 'row',
@@ -217,7 +216,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: '#FFF',
     },
     closeBtn: {
         padding: 4,
@@ -229,19 +227,15 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     label: {
-        color: 'rgba(255,255,255,0.6)',
         fontSize: 14,
         marginBottom: 8,
         fontWeight: '500',
     },
     input: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
         borderRadius: 16,
         padding: 16,
-        color: '#FFF',
         fontSize: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
     },
     textArea: {
         height: 100,
@@ -253,7 +247,6 @@ const styles = StyleSheet.create({
     },
     charCount: {
         alignSelf: 'flex-end',
-        color: 'rgba(255,255,255,0.4)',
         fontSize: 12,
         marginTop: 6,
     },
@@ -262,11 +255,9 @@ const styles = StyleSheet.create({
         paddingBottom: Platform.OS === 'ios' ? 20 : 0,
     },
     saveBtn: {
-        backgroundColor: '#FF8A00', // Primary color
         paddingVertical: 16,
         borderRadius: 16,
         alignItems: 'center',
-        shadowColor: '#FF8A00',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,

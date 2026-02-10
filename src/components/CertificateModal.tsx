@@ -45,6 +45,19 @@ const CertificateModal: React.FC<Props> = ({ visible, badge, onClose }) => {
         }
     };
 
+    const getTierColors = (tier?: string) => {
+        switch (tier?.toLowerCase()) {
+            case 'gold': return ['#C5A059', '#E6C682', '#C5A059'];
+            case 'silver': return ['#BDBDBD', '#E0E0E0', '#BDBDBD'];
+            case 'bronze': return ['#A0522D', '#CD7F32', '#A0522D'];
+            case 'platinum': return ['#A9A9A9', '#E5E4E2', '#A9A9A9'];
+            case 'diamond': return ['#00BFFF', '#B9F2FF', '#00BFFF'];
+            default: return ['#ff6d00', '#ff9e40', '#ff6d00'];
+        }
+    };
+
+    const borderColors = getTierColors(badge.tier);
+
     return (
         <Modal
             visible={visible}
@@ -56,9 +69,9 @@ const CertificateModal: React.FC<Props> = ({ visible, badge, onClose }) => {
                 <BlurView intensity={30} style={StyleSheet.absoluteFill} tint="dark" />
 
                 <View style={styles.certificateContainer}>
-                    {/* Gold Border Frame */}
+                    {/* Dynamic Border Frame */}
                     <LinearGradient
-                        colors={['#C5A059', '#E6C682', '#C5A059']}
+                        colors={borderColors}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.borderGradient}
@@ -83,16 +96,17 @@ const CertificateModal: React.FC<Props> = ({ visible, badge, onClose }) => {
                             <Text style={styles.presentText}>This certifies that</Text>
 
                             {/* User Name */}
-                            <Text style={styles.nameText}>{userName}</Text>
+                            <Text style={[styles.nameText, { color: borderColors[0] }]}>{userName}</Text>
 
-                            <View style={styles.divider} />
+                            <View style={[styles.divider, { backgroundColor: borderColors[0] }]} />
 
-                            <Text style={styles.bodyText}>Has successfully demonstrated excellence and dedication by earning the prestigious badge</Text>
+                            <Text style={styles.bodyText}>Has successfully demonstrated excellence in {badge.category} and dedication by earning the prestigious badge</Text>
 
                             {/* Badge Highlight */}
                             <View style={styles.badgeHighlight}>
                                 <Image source={{ uri: badge.image_url }} style={styles.badgeImage} resizeMode="contain" />
                                 <Text style={styles.badgeName}>{badge.name}</Text>
+                                {badge.tier && <Text style={[styles.badgeTier, { color: borderColors[0] }]}>{badge.tier.toUpperCase()} TIER</Text>}
                             </View>
 
                             {/* Footer / Signatures */}
@@ -105,7 +119,7 @@ const CertificateModal: React.FC<Props> = ({ visible, badge, onClose }) => {
 
                                 {/* Simulated Signature */}
                                 <View style={styles.signatureBlock}>
-                                    <Text style={styles.signatureText}>LinguaLink</Text>
+                                    <Text style={styles.signatureText}>LinguaLink Community</Text>
                                     <View style={styles.line} />
                                     <Text style={styles.label}>Authorized Signature</Text>
                                 </View>
@@ -113,7 +127,7 @@ const CertificateModal: React.FC<Props> = ({ visible, badge, onClose }) => {
 
                             {/* Seal */}
                             <View style={styles.seal}>
-                                <Ionicons name="ribbon" size={50} color="#C5A059" />
+                                <Ionicons name="ribbon" size={50} color={borderColors[0]} />
                             </View>
                         </View>
                     </LinearGradient>
@@ -239,6 +253,12 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
         color: '#1c1022',
+        marginBottom: 4,
+    },
+    badgeTier: {
+        fontSize: 12,
+        fontWeight: '600',
+        letterSpacing: 1,
     },
     footer: {
         flexDirection: 'row',

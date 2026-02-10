@@ -6,9 +6,11 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { submitValidation, type VoiceClipWithUser } from '../utils/content';
+import { useTheme } from '../context/ThemeContext';
 
 interface ValidationFormProps {
   clip: VoiceClipWithUser;
@@ -30,6 +32,7 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
   onValidationComplete,
   onCancel,
 }) => {
+  const { colors, isDark } = useTheme();
   const [selectedType, setSelectedType] = useState<ValidationType>('pronunciation');
   const [rating, setRating] = useState<number>(0);
   const [feedback, setFeedback] = useState<string>('');
@@ -77,7 +80,7 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
   const renderStars = () => {
     return (
       <View style={styles.starsContainer}>
-        <Text style={styles.starsLabel}>Rate this clip:</Text>
+        <Text style={[styles.starsLabel, { color: colors.text }]}>Rate this clip:</Text>
         <View style={styles.starsRow}>
           {[1, 2, 3, 4, 5].map((star) => (
             <TouchableOpacity
@@ -88,12 +91,12 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
               <Ionicons
                 name={rating >= star ? 'star' : 'star-outline'}
                 size={24}
-                color={rating >= star ? '#FFD700' : '#D1D5DB'}
+                color={rating >= star ? '#FFD700' : colors.textSecondary}
               />
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.ratingText}>
+        <Text style={[styles.ratingText, { color: colors.textSecondary }]}>
           {rating > 0 ? `${rating}/5 stars` : 'Select a rating'}
         </Text>
       </View>
@@ -101,41 +104,49 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : '#000' }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Validate Voice Clip</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Validate Voice Clip</Text>
         <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-          <Ionicons name="close" size={24} color="#6B7280" />
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.clipInfo}>
-        <Text style={styles.clipPhrase}>{clip.phrase}</Text>
-        <Text style={styles.clipTranslation}>{clip.translation}</Text>
-        <Text style={styles.clipLanguage}>{clip.language}</Text>
-        <Text style={styles.clipUser}>by @{clip.user.username}</Text>
+      <View style={[styles.clipInfo, { backgroundColor: colors.inputBackground }]}>
+        <Text style={[styles.clipPhrase, { color: colors.text }]}>{clip.phrase}</Text>
+        <Text style={[styles.clipTranslation, { color: colors.textSecondary }]}>{clip.translation}</Text>
+        <Text style={[styles.clipLanguage, { color: colors.textMuted }]}>{clip.language}</Text>
+        <Text style={[styles.clipUser, { color: colors.textMuted }]}>by @{clip.user.username}</Text>
       </View>
 
       <View style={styles.validationTypeSection}>
-        <Text style={styles.sectionTitle}>Validation Type</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Validation Type</Text>
         <View style={styles.typeButtons}>
           {validationTypes.map(({ type, label, icon }) => (
             <TouchableOpacity
               key={type}
               style={[
                 styles.typeButton,
-                selectedType === type && styles.selectedTypeButton,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+                selectedType === type && {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.primary
+                },
               ]}
               onPress={() => setSelectedType(type)}
             >
               <Ionicons
                 name={icon as any}
                 size={20}
-                color={selectedType === type ? '#FFFFFF' : '#6B7280'}
+                color={selectedType === type ? '#FFFFFF' : colors.textSecondary}
               />
               <Text
                 style={[
                   styles.typeButtonText,
+                  { color: colors.textSecondary },
                   selectedType === type && styles.selectedTypeButtonText,
                 ]}
               >
@@ -149,24 +160,39 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
       {renderStars()}
 
       <View style={styles.feedbackSection}>
-        <Text style={styles.sectionTitle}>Feedback (Optional)</Text>
-        <View style={styles.feedbackContainer}>
-          <Text style={styles.feedbackPlaceholder}>
-            Add any additional comments or suggestions...
-          </Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Feedback (Optional)</Text>
+        <View style={[styles.feedbackContainer, { backgroundColor: colors.inputBackground }]}>
+          <TextInput
+            style={[styles.feedbackInput, { color: colors.text }]}
+            placeholder="Add any additional comments or suggestions..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            value={feedback}
+            onChangeText={setFeedback}
+          />
         </View>
       </View>
 
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.cancelButton}
+          style={[
+            styles.cancelButton,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.background
+            }
+          ]}
           onPress={onCancel}
           disabled={isSubmitting}
         >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
+          <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.submitButton, rating === 0 && styles.disabledButton]}
+          style={[
+            styles.submitButton,
+            { backgroundColor: colors.primary },
+            rating === 0 && styles.disabledButton
+          ]}
           onPress={handleSubmit}
           disabled={isSubmitting || rating === 0}
         >
@@ -183,11 +209,9 @@ export const ValidationForm: React.FC<ValidationFormProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
     margin: 20,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -202,13 +226,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1F2937',
   },
   closeButton: {
     padding: 4,
   },
   clipInfo: {
-    backgroundColor: '#F9FAFB',
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
@@ -216,22 +238,18 @@ const styles = StyleSheet.create({
   clipPhrase: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 8,
   },
   clipTranslation: {
     fontSize: 14,
-    color: '#6B7280',
     marginBottom: 8,
   },
   clipLanguage: {
     fontSize: 12,
-    color: '#9CA3AF',
     marginBottom: 4,
   },
   clipUser: {
     fontSize: 12,
-    color: '#9CA3AF',
   },
   validationTypeSection: {
     marginBottom: 20,
@@ -239,7 +257,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 12,
   },
   typeButtons: {
@@ -254,16 +271,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-  },
-  selectedTypeButton: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
   },
   typeButtonText: {
     fontSize: 14,
-    color: '#6B7280',
     marginLeft: 6,
   },
   selectedTypeButtonText: {
@@ -275,7 +285,6 @@ const styles = StyleSheet.create({
   starsLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
     marginBottom: 12,
   },
   starsRow: {
@@ -289,23 +298,21 @@ const styles = StyleSheet.create({
   },
   ratingText: {
     fontSize: 14,
-    color: '#6B7280',
     textAlign: 'center',
   },
   feedbackSection: {
     marginBottom: 20,
   },
   feedbackContainer: {
-    backgroundColor: '#F9FAFB',
     padding: 16,
     borderRadius: 12,
     minHeight: 80,
     justifyContent: 'center',
   },
-  feedbackPlaceholder: {
+  feedbackInput: {
     fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
+    textAlignVertical: 'top',
+    minHeight: 60,
   },
   actions: {
     flexDirection: 'row',
@@ -317,25 +324,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
   },
   submitButton: {
     flex: 2,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: '#3B82F6',
     alignItems: 'center',
   },
   disabledButton: {
-    backgroundColor: '#D1D5DB',
+    opacity: 0.5,
   },
   submitButtonText: {
     fontSize: 16,

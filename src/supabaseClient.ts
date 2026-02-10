@@ -82,4 +82,9 @@ export const getAuthenticatedSupabase = (): SupabaseClient => {
   return authenticatedClient || baseSupabase;
 };
 
+// Get the current Clerk token (for direct HTTP requests)
+export const getSupabaseToken = (): string | null => {
+  return currentClerkToken;
+};
+
 

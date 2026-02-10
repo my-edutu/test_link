@@ -30,7 +30,6 @@ import { Colors, Typography, Layout, Gradients } from '../constants/Theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassCard } from '../components/GlassCard';
 import { BlurView } from 'expo-blur';
-
 const { width, height } = Dimensions.get('window');
 
 interface Message {
@@ -62,9 +61,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 import { useTheme } from '../context/ThemeContext';
 
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  const themeContext = useTheme();
-  const colors = themeContext.colors || Colors; // Fallback to static Colors if context is missing
-  const isDark = themeContext.isDark ?? true;
+  const { colors, isDark } = useTheme();
   const params = route.params || {} as any;
   const contact = params.contact || { id: '', name: 'Unknown', avatar: 'U', language: '—', isOnline: false };
   const initialConversationId = params.conversationId || null;
@@ -372,7 +369,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             style={{ flexDirection: 'row', alignItems: 'center' }}
             onPress={() => navigation.navigate('UserProfile', { userId: activeContact.id })}
           >
-            <View style={[styles.headerAvatar, { marginRight: 10 }]}>
+            <View style={[styles.headerAvatar, { borderColor: colors.borderLight }]}>
               {activeContact.avatar && activeContact.avatar.startsWith('http') ? (
                 <Image source={{ uri: activeContact.avatar }} style={styles.headerAvatarImage} />
               ) : (
@@ -409,9 +406,9 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       ),
-      headerTintColor: '#FFFFFF',
+      headerTintColor: colors.text, // Dynamic tint color
     });
-  }, [navigation, activeContact]);
+  }, [navigation, activeContact, colors, isDark]);
 
   // ... (Presence code remains same)
 
@@ -468,7 +465,6 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // ... (renderMessage logic)
   const renderMessage = (message: Message) => {
     const isMe = message.sender === 'me';
     const isPlaying = currentPlayingId === message.id;
@@ -511,8 +507,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               style={[
                 styles.messageBubble,
                 isMe ? styles.myMessageBubble : [styles.theirMessageBubble, {
-                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.inputBackground,
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.border
                 }]
               ]}
             >
@@ -560,10 +556,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
 
                 {message.translatedText && (showTranslations || message.isTranslationVisible) && (
-                  <View style={[styles.translationContainer, { borderTopColor: 'rgba(255, 255, 255, 0.1)' }]}>
+                  <View style={[styles.translationContainer, { borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
                     <Text style={[
                       styles.translationText,
-                      isMe ? styles.myTranslationText : styles.theirTranslationText
+                      isMe ? styles.myTranslationText : [styles.theirTranslationText, { color: colors.textSecondary }]
                     ]}>
                       {message.translatedText}
                     </Text>
@@ -573,7 +569,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </GlassCard>
             <Text style={[
               styles.messageTimestamp,
-              isMe ? styles.myTimestamp : styles.theirTimestamp
+              isMe ? styles.myTimestamp : [styles.theirTimestamp, { color: colors.textSecondary }]
             ]}>
               {message.timestamp}
             </Text>
@@ -588,14 +584,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
     return (
       <View style={styles.typingContainer}>
-        <View style={styles.typingBubble}>
+        <View style={[styles.typingBubble, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.inputBackground }]}>
           <View style={styles.typingDots}>
-            <Animated.View style={[styles.typingDot, { opacity: dot1Anim }]} />
-            <Animated.View style={[styles.typingDot, { opacity: dot2Anim }]} />
-            <Animated.View style={[styles.typingDot, { opacity: dot3Anim }]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot1Anim, backgroundColor: isDark ? '#FFF' : colors.textSecondary }]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot2Anim, backgroundColor: isDark ? '#FFF' : colors.textSecondary }]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot3Anim, backgroundColor: isDark ? '#FFF' : colors.textSecondary }]} />
           </View>
         </View>
-        <Text style={styles.typingText}>{contact.name} is typing...</Text>
+        <Text style={[styles.typingText, { color: colors.textMuted }]}>{activeContact.name} is typing...</Text>
       </View>
     );
   };
@@ -619,14 +615,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
         {/* Reply Banner */}
         {replyingTo && (
-          <GlassCard intensity={80} style={styles.replyBanner}>
+          <GlassCard intensity={80} style={[styles.replyBanner, { backgroundColor: isDark ? undefined : colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.replyLabel}>Replying to {replyingTo.sender === 'me' ? 'Yourself' : contact.name}</Text>
-                <Text style={styles.replyText} numberOfLines={1}>{replyingTo.text || (replyingTo.type === 'voice' ? 'Voice Message' : 'Media')}</Text>
+                <Text style={[styles.replyLabel, { color: colors.textSecondary }]}>Replying to {replyingTo.sender === 'me' ? 'Yourself' : activeContact.name}</Text>
+                <Text style={[styles.replyText, { color: colors.text }]} numberOfLines={1}>{replyingTo.text || (replyingTo.type === 'voice' ? 'Voice Message' : 'Media')}</Text>
               </View>
               <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.6)" />
+                <Ionicons name="close-circle" size={24} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
           </GlassCard>
@@ -636,7 +632,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-          style={[styles.inputContainer, { paddingBottom: (insets.bottom || 8), backgroundColor: isDark ? 'transparent' : colors.surface }]}
+          style={[styles.inputContainer, { paddingBottom: (insets.bottom || 8), backgroundColor: isDark ? 'transparent' : colors.surface, borderTopColor: colors.border, borderTopWidth: isDark ? 0 : 1 }]}
         >
           {isRecording ? (
             // Recording UI
@@ -694,7 +690,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             // Normal Input UI
             <View style={styles.modernInputRow}>
               {/* Plus Icon Removed */}
-              <View style={[styles.textInputContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+              <View style={[styles.textInputContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.inputBackground }]}>
                 <TextInput
                   style={[styles.textInput, { color: colors.text }]}
                   value={newMessage}
@@ -702,7 +698,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                   onFocus={() => { }}
                   multiline
                   maxLength={500}
-                  placeholder={replyingTo ? `Reply to ${replyingTo.sender === 'me' ? 'yourself' : contact.name}...` : "Type a message..."}
+                  placeholder={replyingTo ? `Reply to ${replyingTo.sender === 'me' ? 'yourself' : activeContact.name}...` : "Type a message..."}
                   placeholderTextColor={colors.textSecondary}
                 />
               </View>
@@ -743,16 +739,16 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Keep as is for now, or use a theme driven semi-transparent color
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    // borderColor handled in component
   },
   headerAvatarText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: '#FFFFFF', // Keep as is or use theme.textInverse
   },
   headerAvatarImage: {
     width: 34,
@@ -768,7 +764,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#10B981',
     borderWidth: 2,
-    borderColor: '#1D0800',
+    borderColor: '#1D0800', // Could be theme.background
   },
   headerName: {
     ...Typography.h4,
@@ -805,182 +801,123 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   bubbleWrapper: {
-    maxWidth: '85%',
+    maxWidth: '80%',
   },
   messageBubble: {
     borderRadius: 20,
+    padding: 12,
+    marginBottom: 4,
+    borderWidth: 1,
     overflow: 'hidden',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   myMessageBubble: {
+    backgroundColor: 'rgba(255, 138, 0, 0.8)', // Primary color with high opacity
+    borderColor: 'rgba(255, 138, 0, 1)',
     borderBottomRightRadius: 4,
-    backgroundColor: '#FF8A00', // Primary color for sender
-    borderWidth: 0,
   },
   theirMessageBubble: {
+    // colors handled in component
     borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    // Colors handled dynamically in render or via hook if possible, 
-    // but since this is StyleSheet, we might need to inline styles in render 
-    // or leave defaults and override.
-    // For now, let's keep default as glass/dark and override in render.
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  voiceMessageContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  playButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   messageText: {
-    ...Typography.body,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
   },
   myMessageText: {
     color: '#FFFFFF',
   },
   theirMessageText: {
-    // color now handled by dynamic logic or we can add dynamic style here? 
-    // It's better to use dynamic logic in the component render
-    color: '#FFFFFF',
-  },
-  voiceMessageContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minWidth: 240, // Wider for audio
-    paddingRight: 8,
-  },
-  playButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  voiceMessageInfo: {
-    flex: 1,
-  },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    height: 20,
-  },
-  waveformBar: {
-    width: 2,
-    borderRadius: 1,
-  },
-  voiceMessageDuration: {
-    fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.5)',
-    marginTop: 4,
+    // color handled by theme
   },
   translationContainer: {
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
+    // border color handled in component
   },
   translationText: {
-    ...Typography.body,
     fontSize: 14,
-    color: Colors.primary,
     fontStyle: 'italic',
   },
   myTranslationText: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   theirTranslationText: {
-    color: Colors.primary,
+    // color handled by theme
   },
   messageTimestamp: {
-    fontSize: 10,
+    fontSize: 11,
     marginTop: 4,
-    color: 'rgba(255, 255, 255, 0.3)',
-  },
-  myTimestamp: {
     alignSelf: 'flex-end',
   },
+  myTimestamp: {
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
   theirTimestamp: {
-    alignSelf: 'flex-start',
+    // color handled by theme
   },
   typingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
+    marginVertical: 10,
+    alignItems: 'flex-start',
+    marginLeft: 10,
   },
   typingBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 10,
+    borderRadius: 15,
+    borderBottomLeftRadius: 2,
+    marginBottom: 5,
   },
   typingDots: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 4,
   },
   typingDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#FFFFFF',
   },
   typingText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.3)',
-    marginLeft: 12,
-    fontStyle: 'italic',
+    fontSize: 12,
+    marginLeft: 5,
+  },
+  replyBanner: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  replyLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  replyText: {
+    fontSize: 14,
   },
   inputContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  modernInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 28,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  attachButton: {
-    padding: 4,
-    marginLeft: 4,
-  },
-  textInputContainer: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
-  textInput: {
-    ...Typography.body,
-    color: '#FFFFFF',
-    maxHeight: 120,
-    paddingVertical: 8,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  voiceButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
   recordingContainer: {
     borderRadius: 24,
-    padding: 20,
+    padding: 16,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   recordingHeader: {
     flexDirection: 'row',
@@ -996,78 +933,89 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#FF4444',
-    marginRight: 10,
+    backgroundColor: '#EF4444',
+    marginRight: 8,
   },
   recordingText: {
-    ...Typography.h4,
-    color: '#FFFFFF',
+    color: '#EF4444',
+    fontWeight: '600',
   },
   recordingDuration: {
-    ...Typography.h3,
-    color: Colors.primary,
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
   },
   recordingWaveform: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
     height: 40,
-    marginBottom: 24,
+    gap: 3,
+    marginBottom: 16,
+  },
+  waveformBar: {
+    width: 4,
+    borderRadius: 2,
   },
   recordingActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
   },
   cancelRecordingButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 12,
-    borderRadius: Layout.radius.m,
+    padding: 10,
   },
   cancelRecordingText: {
-    ...Typography.h4,
     color: '#FFFFFF',
-    marginLeft: 8,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   stopRecordingButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: Layout.radius.m,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   stopRecordingText: {
-    ...Typography.h4,
     color: '#FFFFFF',
-    marginLeft: 8,
-  },
-  replyBanner: {
-    position: 'absolute',
-    bottom: 80, // Above input
-    left: 20,
-    right: 20,
-    padding: 12,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
-    zIndex: 10,
-  },
-  replyLabel: {
-    fontSize: 12,
-    color: Colors.primary,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginLeft: 6,
   },
-  replyText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+  modernInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 10,
+  },
+  textInputContainer: {
+    flex: 1,
+    borderRadius: 24,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginRight: 10,
+  },
+  textInput: {
+    fontSize: 16,
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  voiceButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

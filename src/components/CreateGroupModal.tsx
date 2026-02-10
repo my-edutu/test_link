@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/components/CreateGroupModal.tsx
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -43,7 +44,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onGroupCreated,
 }) => {
   const { user, session } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [loading, setLoading] = useState(false);
   const [newGroup, setNewGroup] = useState<NewGroup>({
     name: '',
@@ -52,6 +53,139 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     isPrivate: false,
     category: '',
   });
+
+  const styles = useMemo(() => StyleSheet.create({
+    modalOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    keyboardView: {
+      width: '100%',
+      maxHeight: '90%',
+    },
+    modalContent: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      flex: 1,
+      paddingTop: 8,
+      backgroundColor: colors.card,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    closeButton: {
+      padding: 4,
+    },
+    modalBody: {
+      flex: 1,
+    },
+    modalBodyContent: {
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      paddingBottom: 40,
+    },
+    inputGroup: {
+      marginBottom: 20,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.textSecondary,
+      marginBottom: 8,
+      marginLeft: 4,
+    },
+    textInput: {
+      borderWidth: 1,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      backgroundColor: colors.inputBackground,
+      color: colors.text,
+      borderColor: colors.border,
+    },
+    textArea: {
+      height: 100,
+      textAlignVertical: 'top',
+    },
+    radioGroup: {
+      marginTop: 8,
+      backgroundColor: colors.inputBackground,
+      borderRadius: 16,
+      padding: 12,
+    },
+    radioOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      paddingVertical: 4,
+    },
+    radioButton: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      marginRight: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderColor: colors.border,
+    },
+    radioButtonSelected: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: Colors.primary,
+    },
+    radioText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: colors.text,
+    },
+    modalFooter: {
+      flexDirection: 'row',
+      paddingHorizontal: 20,
+      paddingVertical: 20,
+      borderTopWidth: 1,
+      marginBottom: 20,
+      gap: 12,
+      borderTopColor: colors.border,
+    },
+    cancelButton: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      alignItems: 'center',
+      borderColor: colors.border,
+    },
+    cancelButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    createButton: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 16,
+      alignItems: 'center',
+      backgroundColor: Colors.primary,
+    },
+    createButtonText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+  }), [colors]);
 
   const createGroup = async () => {
     if (!user?.id) {
@@ -128,20 +262,20 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       onRequestClose={handleClose}
     >
       <View style={styles.modalOverlay}>
-        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={isDark ? 20 : 40} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
-          <GlassCard intensity={40} style={styles.modalContent}>
+          <GlassCard intensity={isDark ? 40 : 80} style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create New Group</Text>
               <TouchableOpacity
                 onPress={handleClose}
                 style={styles.closeButton}
               >
-                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -154,11 +288,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Group Name</Text>
                 <TextInput
-                  style={[styles.textInput, { color: Colors.text, borderColor: Colors.border }]}
+                  style={styles.textInput}
                   value={newGroup.name}
                   onChangeText={(text) => setNewGroup(prev => ({ ...prev, name: text }))}
                   placeholder="Enter group name"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   maxLength={50}
                   returnKeyType="next"
                 />
@@ -167,11 +301,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Description</Text>
                 <TextInput
-                  style={[styles.textInput, styles.textArea, { color: Colors.text, borderColor: Colors.border }]}
+                  style={[styles.textInput, styles.textArea]}
                   value={newGroup.description}
                   onChangeText={(text) => setNewGroup(prev => ({ ...prev, description: text }))}
                   placeholder="Describe your group"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   multiline
                   numberOfLines={3}
                   maxLength={200}
@@ -182,11 +316,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Language Focus</Text>
                 <TextInput
-                  style={[styles.textInput, { color: Colors.text, borderColor: Colors.border }]}
+                  style={styles.textInput}
                   value={newGroup.language}
                   onChangeText={(text) => setNewGroup(prev => ({ ...prev, language: text }))}
                   placeholder="e.g., Spanish, French, Igbo"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                 />
               </View>
@@ -198,34 +332,34 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     style={styles.radioOption}
                     onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: false }))}
                   >
-                    <View style={[styles.radioButton, { borderColor: Colors.border }]}>
-                      {!newGroup.isPrivate && <View style={[styles.radioButtonSelected, { backgroundColor: Colors.primary }]} />}
+                    <View style={styles.radioButton}>
+                      {!newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
                     </View>
-                    <Text style={[styles.radioText, { color: Colors.text }]}>Public - Anyone can join</Text>
+                    <Text style={styles.radioText}>Public - Anyone can join</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.radioOption}
                     onPress={() => setNewGroup(prev => ({ ...prev, isPrivate: true }))}
                   >
-                    <View style={[styles.radioButton, { borderColor: Colors.border }]}>
-                      {newGroup.isPrivate && <View style={[styles.radioButtonSelected, { backgroundColor: Colors.primary }]} />}
+                    <View style={styles.radioButton}>
+                      {newGroup.isPrivate && <View style={styles.radioButtonSelected} />}
                     </View>
-                    <Text style={[styles.radioText, { color: Colors.text }]}>Private - Invite only</Text>
+                    <Text style={styles.radioText}>Private - Invite only</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </ScrollView>
 
-            <View style={[styles.modalFooter, { borderTopColor: Colors.border }]}>
+            <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.cancelButton, { borderColor: Colors.border }]}
+                style={styles.cancelButton}
                 onPress={handleClose}
               >
-                <Text style={[styles.cancelButtonText, { color: Colors.textSecondary }]}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.createButton, { backgroundColor: Colors.primary }]}
+                style={styles.createButton}
                 onPress={createGroup}
                 disabled={loading}
               >
@@ -240,129 +374,5 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     </Modal>
   );
 };
-
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  keyboardView: {
-    width: '100%',
-    maxHeight: '90%',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    flex: 1,
-    paddingTop: 8,
-    backgroundColor: 'rgba(30, 30, 30, 0.7)', // Fallback for no blur
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalBody: {
-    flex: 1,
-  },
-  modalBodyContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    paddingBottom: 40,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  radioGroup: {
-    marginTop: 8,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 16,
-    padding: 12,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingVertical: 4,
-  },
-  radioButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  radioButtonSelected: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  radioText: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    marginBottom: 20,
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  createButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-});
 
 export default CreateGroupModal;

@@ -25,7 +25,11 @@
       "Bash(npx eas-cli build:configure:*)",
       "WebFetch(domain:docs.livekit.io)",
       "Bash(ls:*)",
-      "Bash(npx expo start:*)"
+      "Bash(npx expo start:*)",
+      "Bash(findstr:*)",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm view:*)"
     ]
   }
 }

@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   Animated,
@@ -13,6 +12,8 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import {
@@ -26,7 +27,7 @@ import { Track, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-cli
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { useTheme } from '../context/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { liveService } from '../services/liveService';
 import * as Network from 'expo-network';
@@ -349,6 +350,7 @@ const LiveViewerScreen: React.FC<any> = ({ navigation, route }) => {
 const ViewerContent = ({ navigation, liveStream, heartCount, messages, newComment, setNewComment, sendMessage, setHeartCount }: any) => {
   const participants = useParticipants();
   const room = useRoomContext();
+  const insets = useSafeAreaInsets();
 
   // Reconnection state
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -438,60 +440,67 @@ const ViewerContent = ({ navigation, liveStream, heartCount, messages, newCommen
 
       <RemoteVideoView />
 
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        {/* Top Header */}
-        <View style={styles.header}>
-          <View style={styles.streamerPill}>
-            <Image
-              source={{ uri: liveStream?.profiles?.avatar_url || 'https://via.placeholder.com/150' }}
-              style={styles.avatar}
-            />
-            <View>
-              <Text style={styles.streamerName}>{liveStream?.profiles?.username || 'Streamer'}</Text>
-              <Text style={styles.viewerCount}>{participants.length > 0 ? participants.length : 1} viewers</Text>
+      <SafeAreaView style={styles.overlay} edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          {/* Top Header */}
+          <View style={styles.header}>
+            <View style={styles.streamerPill}>
+              <Image
+                source={{ uri: liveStream?.profiles?.avatar_url || 'https://via.placeholder.com/150' }}
+                style={styles.avatar}
+              />
+              <View>
+                <Text style={styles.streamerName}>{liveStream?.profiles?.username || 'Streamer'}</Text>
+                <Text style={styles.viewerCount}>{participants.length > 0 ? participants.length : 1} viewers</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="close" size={24} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <FloatingHearts count={heartCount} />
+
+            {/* Bottom Area with manual bottom safe area padding */}
+            <View style={[styles.bottomArea, { paddingBottom: Math.max(insets.bottom, 16) }]} pointerEvents="box-none">
+              <FlatList
+                data={messages}
+                renderItem={({ item }) => (
+                  <View style={styles.chatBubble}>
+                    <Text style={styles.chatUser}>{item.username}</Text>
+                    <Text style={styles.chatText}>{item.text}</Text>
+                  </View>
+                )}
+                keyExtractor={item => item.id}
+                style={styles.chatList}
+              />
+
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.chatInput}
+                  placeholder="Say something..."
+                  placeholderTextColor="rgba(255,255,255,0.7)"
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  onSubmitEditing={sendMessage}
+                />
+                <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
+                  <Ionicons name="send" size={20} color="#FFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.heartBtn} onPress={() => setHeartCount((c: number) => c + 1)}>
+                  <Ionicons name="heart" size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-
-          <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="close" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Bottom Area */}
-        <FloatingHearts count={heartCount} />
-
-        <View style={styles.bottomArea} pointerEvents="box-none">
-          <FlatList
-            data={messages}
-            renderItem={({ item }) => (
-              <View style={styles.chatBubble}>
-                <Text style={styles.chatUser}>{item.username}</Text>
-                <Text style={styles.chatText}>{item.text}</Text>
-              </View>
-            )}
-            keyExtractor={item => item.id}
-            style={styles.chatList}
-          />
-
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.chatInput}
-              placeholder="Say something..."
-              placeholderTextColor="rgba(255,255,255,0.7)"
-              value={newComment}
-              onChangeText={setNewComment}
-              onSubmitEditing={sendMessage}
-            />
-            <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-              <Ionicons name="send" size={20} color="#FFF" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.heartBtn} onPress={() => setHeartCount((c: number) => c + 1)}>
-              <Ionicons name="heart" size={24} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );

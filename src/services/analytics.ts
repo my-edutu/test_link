@@ -1,34 +1,7 @@
 // src/services/analytics.ts
 // PostHog Analytics service for tracking user events and identification
 
-import { usePostHog, PostHog } from 'posthog-react-native';
-
-let posthogClient: PostHog | null = null;
-
-export function setPostHogClient(client: PostHog) {
-  posthogClient = client;
-  console.log('[Analytics] PostHog client set externally');
-}
-
-/**
- * Initialize PostHog analytics
- * Should be called once at app startup
- * Note: PostHog is initialized via PostHogProvider in App.tsx
- */
-export async function initAnalytics(apiKey: string, host?: string): Promise<PostHog | null> {
-  if (posthogClient) {
-    return posthogClient;
-  }
-  // Deprecated: initialization should happen in App.tsx and passed via setPostHogClient
-  return null;
-}
-
-/**
- * Get the PostHog client instance
- */
-export function getPostHogClient(): PostHog | null {
-  return posthogClient;
-}
+import { posthog } from './posthog';
 
 /**
  * Track a custom event
@@ -36,14 +9,11 @@ export function getPostHogClient(): PostHog | null {
  * @param properties - Optional properties to attach to the event
  */
 export function trackEvent(eventName: string, properties?: Record<string, any>): void {
-  if (!posthogClient) {
-    console.warn('[Analytics] PostHog not initialized, skipping event:', eventName);
-    return;
-  }
-
   try {
-    posthogClient.capture(eventName, properties);
-    console.log('[Analytics] Event tracked:', eventName, properties);
+    posthog.capture(eventName, properties);
+    if (__DEV__) {
+      console.log('[Analytics] Event tracked:', eventName, properties);
+    }
   } catch (error) {
     console.error('[Analytics] Failed to track event:', eventName, error);
   }
@@ -56,14 +26,11 @@ export function trackEvent(eventName: string, properties?: Record<string, any>):
  * @param traits - User properties like email, language, etc.
  */
 export function identifyUser(userId: string, traits?: Record<string, any>): void {
-  if (!posthogClient) {
-    console.warn('[Analytics] PostHog not initialized, skipping identify');
-    return;
-  }
-
   try {
-    posthogClient.identify(userId, traits);
-    console.log('[Analytics] User identified:', userId);
+    posthog.identify(userId, traits);
+    if (__DEV__) {
+      console.log('[Analytics] User identified:', userId);
+    }
   } catch (error) {
     console.error('[Analytics] Failed to identify user:', error);
   }
@@ -73,13 +40,11 @@ export function identifyUser(userId: string, traits?: Record<string, any>): void
  * Reset the current user (on logout)
  */
 export function resetUser(): void {
-  if (!posthogClient) {
-    return;
-  }
-
   try {
-    posthogClient.reset();
-    console.log('[Analytics] User reset');
+    posthog.reset();
+    if (__DEV__) {
+      console.log('[Analytics] User reset');
+    }
   } catch (error) {
     console.error('[Analytics] Failed to reset user:', error);
   }
@@ -90,12 +55,8 @@ export function resetUser(): void {
  * @param properties - Properties to set on the current user
  */
 export function setUserProperties(properties: Record<string, any>): void {
-  if (!posthogClient) {
-    return;
-  }
-
   try {
-    posthogClient.capture('$set', { $set: properties });
+    posthog.capture('$set', { $set: properties });
   } catch (error) {
     console.error('[Analytics] Failed to set user properties:', error);
   }
@@ -107,12 +68,8 @@ export function setUserProperties(properties: Record<string, any>): void {
  * @param properties - Optional additional properties
  */
 export function trackScreenView(screenName: string, properties?: Record<string, any>): void {
-  if (!posthogClient) {
-    return;
-  }
-
   try {
-    posthogClient.screen(screenName, properties);
+    posthog.screen(screenName, properties);
   } catch (error) {
     console.error('[Analytics] Failed to track screen view:', error);
   }
@@ -122,13 +79,11 @@ export function trackScreenView(screenName: string, properties?: Record<string, 
  * Flush any pending events immediately
  */
 export async function flushEvents(): Promise<void> {
-  if (!posthogClient) {
-    return;
-  }
-
   try {
-    await posthogClient.flush();
-    console.log('[Analytics] Events flushed');
+    await posthog.flush();
+    if (__DEV__) {
+      console.log('[Analytics] Events flushed');
+    }
   } catch (error) {
     console.error('[Analytics] Failed to flush events:', error);
   }
@@ -138,18 +93,23 @@ export async function flushEvents(): Promise<void> {
  * Shutdown PostHog (call on app close)
  */
 export async function shutdownAnalytics(): Promise<void> {
-  if (!posthogClient) {
-    return;
-  }
-
   try {
-    await posthogClient.flush();
-    posthogClient = null;
-    console.log('[Analytics] PostHog shutdown complete');
+    await posthog.flush();
+    // posthog.shutdown() isn't typically needed in RN as the singleton persists,
+    // but flushing is good practice on close.
+    if (__DEV__) {
+      console.log('[Analytics] PostHog flushed on shutdown');
+    }
   } catch (error) {
     console.error('[Analytics] Failed to shutdown PostHog:', error);
   }
 }
+
+// Deprecated: No longer needed with singleton pattern, keeping empty for backward compatibility if any imports remain
+export async function initAnalytics(apiKey: string, host?: string): Promise<any> {
+  return posthog;
+}
+
 
 // Analytics event names for consistency
 export const AnalyticsEvents = {

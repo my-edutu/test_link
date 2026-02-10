@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
     View,
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../context/AuthProvider';
 import { monetizationApi } from '../services/monetizationApi';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +28,7 @@ interface TopUpModalProps {
 
 const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) => {
     const { user } = useAuth();
+    const { colors, isDark } = useTheme();
     const [amount, setAmount] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -85,29 +86,38 @@ const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) 
             <TouchableOpacity
                 activeOpacity={1}
                 onPress={onClose}
-                style={styles.overlay}
+                style={[styles.overlay, { backgroundColor: colors.overlay }]}
             >
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 >
-                    <TouchableOpacity activeOpacity={1} style={styles.modalContainer}>
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        style={[styles.modalContainer, { backgroundColor: colors.card }]}
+                    >
                         <View style={styles.header}>
-                            <Text style={styles.title}>Top Up Wallet</Text>
+                            <Text style={[styles.title, { color: colors.text }]}>Top Up Wallet</Text>
                             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                                <Ionicons name="close" size={24} color="#1F2937" />
+                                <Ionicons name="close" size={24} color={colors.text} />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={styles.description}>
+                        <Text style={[styles.description, { color: colors.textSecondary }]}>
                             Add funds to your wallet to support creators and unlock premium features.
                         </Text>
 
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.currencySymbol}>$</Text>
+                        <View style={[
+                            styles.inputContainer,
+                            {
+                                backgroundColor: colors.inputBackground,
+                                borderColor: colors.border
+                            }
+                        ]}>
+                            <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, { color: colors.text }]}
                                 placeholder="0.00"
-                                placeholderTextColor="#9CA3AF"
+                                placeholderTextColor={colors.textMuted}
                                 keyboardType="decimal-pad"
                                 value={amount}
                                 onChangeText={setAmount}
@@ -119,16 +129,26 @@ const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) 
                             {[5, 10, 20, 50].map((val) => (
                                 <TouchableOpacity
                                     key={val}
-                                    style={styles.presetButton}
+                                    style={[
+                                        styles.presetButton,
+                                        {
+                                            backgroundColor: colors.inputBackground,
+                                            borderColor: colors.border
+                                        }
+                                    ]}
                                     onPress={() => setAmount(val.toString())}
                                 >
-                                    <Text style={styles.presetText}>${val}</Text>
+                                    <Text style={[styles.presetText, { color: colors.textSecondary }]}>${val}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
 
                         <TouchableOpacity
-                            style={[styles.payButton, loading && styles.payButtonDisabled]}
+                            style={[
+                                styles.payButton,
+                                { backgroundColor: colors.primary },
+                                loading && styles.payButtonDisabled
+                            ]}
                             onPress={handleTopUp}
                             disabled={loading}
                         >
@@ -140,8 +160,8 @@ const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) 
                         </TouchableOpacity>
 
                         <View style={styles.secureBadge}>
-                            <Ionicons name="lock-closed" size={12} color="#6B7280" />
-                            <Text style={styles.secureText}>Secured by Paystack</Text>
+                            <Ionicons name="lock-closed" size={12} color={colors.textSecondary} />
+                            <Text style={[styles.secureText, { color: colors.textSecondary }]}>Secured by Paystack</Text>
                         </View>
                     </TouchableOpacity>
                 </KeyboardAvoidingView>
@@ -153,11 +173,9 @@ const TopUpModal: React.FC<TopUpModalProps> = ({ visible, onClose, onSuccess }) 
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     modalContainer: {
-        backgroundColor: '#FFF',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         padding: 24,
@@ -173,36 +191,30 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#1F2937',
     },
     closeButton: {
         padding: 4,
     },
     description: {
         fontSize: 14,
-        color: '#6B7280',
         marginBottom: 24,
     },
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F3F4F6',
         borderRadius: 16,
         paddingHorizontal: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#E5E7EB',
     },
     currencySymbol: {
         fontSize: 24,
         fontWeight: '600',
-        color: '#6B7280',
     },
     input: {
         flex: 1,
         fontSize: 32,
         fontWeight: '700',
-        color: '#1F2937',
         paddingVertical: 16,
         paddingHorizontal: 8,
     },
@@ -212,31 +224,26 @@ const styles = StyleSheet.create({
         marginBottom: 24,
     },
     presetButton: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         paddingVertical: 8,
         paddingHorizontal: 16,
         borderWidth: 1,
-        borderColor: '#E5E7EB',
     },
     presetText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#4B5563',
     },
     payButton: {
-        backgroundColor: '#FF8A00',
         borderRadius: 16,
         paddingVertical: 16,
         alignItems: 'center',
-        shadowColor: '#FF8A00',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
         elevation: 4,
     },
     payButtonDisabled: {
-        backgroundColor: '#D1D5DB',
+        opacity: 0.5,
         shadowOpacity: 0,
     },
     payButtonText: {
@@ -253,7 +260,6 @@ const styles = StyleSheet.create({
     },
     secureText: {
         fontSize: 12,
-        color: '#6B7280'
     }
 });
 

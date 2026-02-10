@@ -94,6 +94,51 @@ export class BadgeAwarderService {
     }
 
     /**
+     * Handle new follower events.
+     * Check if user qualifies for Social/Follower badges.
+     */
+    @OnEvent(NOTIFICATION_EVENTS.NEW_FOLLOWER)
+    async handleNewFollower(event: { userId: string }): Promise<void> {
+        this.logger.log(`Checking badge eligibility for user ${event.userId} after new follower`);
+        await this.checkFollowerMilestones(event.userId);
+    }
+
+    /**
+     * Check follower milestones and award badges if eligible.
+     */
+    private async checkFollowerMilestones(userId: string): Promise<void> {
+        try {
+            const followerCount = await this.badgesService.getFollowersCount(userId);
+            this.logger.debug(`User ${userId} has ${followerCount} followers`);
+
+            const FOLLOWER_MILESTONES = [
+                { count: 100, badge: 'Voice Pioneer' },
+                { count: 500, badge: 'Cultural Connector' },
+                { count: 1000, badge: 'Language Influencer' },
+                { count: 2000, badge: 'Community Validator' },
+                { count: 5000, badge: 'Lingua Ambassador' },
+                { count: 10000, badge: 'AI Voice Leader' },
+            ];
+
+            for (const milestone of FOLLOWER_MILESTONES) {
+                if (followerCount >= milestone.count) {
+                    const result = await this.badgesService.awardBadgeByName(
+                        userId,
+                        milestone.badge,
+                    );
+
+                    if (result) {
+                        this.logger.log(`Awarded "${milestone.badge}" to user ${userId}`);
+                        this.emitBadgeEarnedEvent(userId, result.badge);
+                    }
+                }
+            }
+        } catch (error) {
+            this.logger.error(`Error checking badge eligibility for followers:`, error);
+        }
+    }
+
+    /**
      * Emit BADGE_EARNED event for push notification.
      */
     private emitBadgeEarnedEvent(

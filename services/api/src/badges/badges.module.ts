@@ -1,12 +1,8 @@
-import { Module } from '@nestjs/common';
-import { BadgesController } from './badges.controller';
-import { BadgesService } from './badges.service';
-import { BadgeAwarderService } from './badge-awarder.service';
-import { CertificateService } from './certificate.service';
+import { BadgeSeederService } from './badge-seeder.service';
 
 @Module({
     controllers: [BadgesController],
-    providers: [BadgesService, BadgeAwarderService, CertificateService],
-    exports: [BadgesService, BadgeAwarderService, CertificateService],
+    providers: [BadgesService, BadgeAwarderService, CertificateService, BadgeSeederService],
+    exports: [BadgesService, BadgeAwarderService, CertificateService, BadgeSeederService],
 })
-export class BadgesModule {}
+export class BadgesModule { }

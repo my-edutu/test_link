@@ -15,7 +15,7 @@ export const StoryRail: React.FC<StoryRailProps> = ({ stories, navigation }) => 
         storiesSection: {
             paddingVertical: 16,
             borderBottomWidth: 1,
-            borderBottomColor: theme === 'dark' ? '#333' : '#F0F0F0',
+            borderBottomColor: colors.border,
         },
         sectionTitle: {
             fontSize: 18,
@@ -86,7 +86,7 @@ export const StoryRail: React.FC<StoryRailProps> = ({ stories, navigation }) => 
             color: colors.text,
             textAlign: 'center',
         },
-    }), [colors, theme]);
+    }), [colors]);
 
     const renderStoryItem = ({ item }: { item: Story | { id: string; user: { name: string; avatar: string; }; thumbnail: string; } }) => {
         // Handle "Add Story" item

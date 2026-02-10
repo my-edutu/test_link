@@ -1,5 +1,5 @@
 // src/screens/GroupsScreen.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { NewtonCradleLoader } from '../components/NewtonCradleLoader';
 import {
   View,
@@ -23,6 +23,7 @@ import CreateGroupModal from '../components/CreateGroupModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassCard } from '../components/GlassCard';
 import { Colors, Layout, Typography } from '../constants/Theme';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -60,6 +61,7 @@ const groupCategories: GroupCategory[] = [
 const GroupsScreen: React.FC<any> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'Discover' | 'My Groups' | 'Created'>('Discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -79,6 +81,254 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
   };
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+      zIndex: 10,
+    },
+    headerTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 20,
+    },
+    backButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors.text,
+      marginLeft: 12,
+    },
+    createHeaderButton: {
+      overflow: 'hidden',
+      borderRadius: 20,
+    },
+    createButtonGradient: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      gap: 4,
+    },
+    createButtonText: {
+      color: '#FFF',
+      fontWeight: '600',
+      fontSize: 14,
+    },
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      marginBottom: 16,
+      height: 50,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.inputBackground,
+      borderWidth: isDark ? 0 : 1,
+      borderColor: isDark ? 'transparent' : colors.border,
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 16,
+      color: colors.text,
+      paddingVertical: 12,
+    },
+    categoriesContent: {
+      paddingRight: 16,
+      gap: 10,
+      alignItems: 'center',
+    },
+    categoryItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.card,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.border,
+      gap: 8,
+    },
+    categoryText: {
+      fontSize: 13,
+      color: colors.text,
+      fontWeight: '600',
+    },
+    tabsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.card,
+      borderRadius: 16,
+      padding: 4,
+      marginTop: 8,
+      borderWidth: isDark ? 0 : 1,
+      borderColor: isDark ? 'transparent' : colors.border,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    activeTab: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : colors.primary + '20',
+    },
+    tabText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: isDark ? 'rgba(255, 255, 255, 0.6)' : colors.textSecondary,
+    },
+    activeTabText: {
+      color: isDark ? '#FFFFFF' : colors.primary,
+      fontWeight: '700',
+    },
+    content: {
+      flex: 1,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+      paddingHorizontal: 30,
+    },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    emptySubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    groupItem: {
+      padding: 16,
+      borderRadius: 20,
+      backgroundColor: isDark ? undefined : colors.card,
+      borderWidth: isDark ? 0 : 1,
+      borderColor: colors.border,
+    },
+    groupAvatar: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+      position: 'relative',
+    },
+    groupAvatarText: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: '#FFF',
+    },
+    privateIndicator: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: Colors.error,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: colors.background,
+    },
+    groupInfo: {
+      flex: 1,
+      marginRight: 8,
+    },
+    groupHeader: { // Row for name + activity
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    groupName: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      flex: 1,
+      marginRight: 8,
+    },
+    groupActivity: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    groupDescription: {
+      fontSize: 14,
+      color: isDark ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+      marginBottom: 8,
+      lineHeight: 20,
+    },
+    groupMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    metaItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginRight: 16,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : colors.background,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      gap: 4,
+      borderWidth: isDark ? 0 : 1,
+      borderColor: colors.border,
+    },
+    metaText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    groupActions: {
+      justifyContent: 'center',
+      paddingLeft: 8,
+    },
+    leaveButton: {
+      padding: 8,
+    },
+    joinButton: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : colors.primary + '20',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+    },
+    joinButtonText: {
+      color: colors.primary,
+      fontWeight: '600',
+      fontSize: 14,
+    },
+  }), [colors, isDark]);
 
   // Fetch all groups (for discovery)
   const fetchGroups = useCallback(async () => {
@@ -341,7 +591,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
   };
 
   const renderGroupItem = (group: Group) => (
-    <GlassCard key={group.id} style={styles.groupItem} intensity={30}>
+    <GlassCard key={group.id} style={styles.groupItem} intensity={isDark ? 30 : 0}>
       <TouchableOpacity
         onPress={() => {
           // Navigate to group chat
@@ -383,11 +633,11 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
 
           <View style={styles.groupMeta}>
             <View style={styles.metaItem}>
-              <Ionicons name="people" size={12} color={Colors.textSecondary} />
+              <Ionicons name="people" size={12} color={colors.textSecondary} />
               <Text style={styles.metaText}>{group.members} members</Text>
             </View>
             <View style={styles.metaItem}>
-              <Ionicons name="language" size={12} color={Colors.textSecondary} />
+              <Ionicons name="language" size={12} color={colors.textSecondary} />
               <Text style={styles.metaText}>{group.language}</Text>
             </View>
           </View>
@@ -399,7 +649,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
               style={styles.leaveButton}
               onPress={() => leaveGroup(group.id)}
             >
-              <Ionicons name="log-out-outline" size={20} color={Colors.textSecondary} />
+              <Ionicons name="log-out-outline" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -425,7 +675,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
           isActive && { backgroundColor: Colors.primary, borderColor: Colors.primary }
         ]}
       >
-        <Ionicons name={category.icon as any} size={16} color={isActive ? '#FFF' : Colors.text} />
+        <Ionicons name={category.icon as any} size={16} color={isActive ? '#FFF' : colors.text} />
         <Text style={[styles.categoryText, isActive && { color: '#FFF' }]}>
           {category.name}
         </Text>
@@ -435,8 +685,8 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+      {isDark && <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />}
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
@@ -445,7 +695,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
             onPress={() => navigation.goBack()}
             style={styles.backButton}
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
             <Text style={styles.headerTitle}>Groups</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -463,16 +713,16 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
         </View>
 
         {/* Search Bar */}
-        <GlassCard intensity={20} style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={Colors.textSecondary} style={styles.searchIcon} />
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search groups..."
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
           />
-        </GlassCard>
+        </View>
 
         {/* Category Filters */}
         <View style={{ height: 50, marginBottom: 8 }}>
@@ -530,7 +780,7 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
           <>
             {getCurrentGroups().length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="people-outline" size={64} color="rgba(255,255,255,0.2)" />
+                <Ionicons name="people-outline" size={64} color={isDark ? "rgba(255,255,255,0.2)" : colors.textSecondary} />
                 <Text style={styles.emptyTitle}>
                   {activeTab === 'Discover' ? 'No groups found' :
                     activeTab === 'My Groups' ? 'You haven\'t joined any groups yet' :
@@ -572,243 +822,5 @@ const GroupsScreen: React.FC<any> = ({ navigation }) => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    zIndex: 10,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.text,
-    marginLeft: 12,
-  },
-  createHeaderButton: {
-    overflow: 'hidden',
-    borderRadius: 20,
-  },
-  createButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    gap: 4,
-  },
-  createButtonText: {
-    color: '#FFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-    height: 50,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: Colors.text,
-    paddingVertical: 12,
-  },
-  categoriesContent: {
-    paddingRight: 16,
-    gap: 10,
-    alignItems: 'center',
-  },
-  categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    gap: 8,
-  },
-  categoryText: {
-    fontSize: 13,
-    color: Colors.text,
-    fontWeight: '600',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 16,
-    padding: 4,
-    marginTop: 8,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  activeTab: {
-    backgroundColor: 'rgba(255,255,255,0.2)', // Or darker contrast
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  activeTabText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  content: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 30,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  groupItem: {
-    padding: 16,
-    borderRadius: 20,
-  },
-  groupAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-    position: 'relative',
-  },
-  groupAvatarText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  privateIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#000',
-  },
-  groupInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
-  groupHeader: { // Row for name + activity
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  groupName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    flex: 1,
-    marginRight: 8,
-  },
-  groupActivity: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  groupDescription: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 8,
-    lineHeight: 20,
-  },
-  groupMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  groupActions: {
-    justifyContent: 'center',
-    paddingLeft: 8,
-  },
-  leaveButton: {
-    padding: 8,
-  },
-  joinButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  joinButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-});
 
 export default GroupsScreen;

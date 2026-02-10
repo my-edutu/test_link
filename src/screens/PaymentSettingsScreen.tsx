@@ -123,166 +123,172 @@ const PaymentSettingsScreen = ({ navigation }: any) => {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-            <View style={[styles.header, { paddingTop: insets.top }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="chevron-back" size={28} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: colors.text }]}>Payment Settings</Text>
-                <View style={{ width: 28 }} />
-            </View>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+                <View style={[styles.header, { paddingTop: insets.top }]}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Ionicons name="chevron-back" size={28} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Payment Settings</Text>
+                    <View style={{ width: 28 }} />
+                </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
-                {/* Error Message */}
-                {error && (
-                    <View style={[styles.errorCard, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}>
-                        <Ionicons name="alert-circle" size={24} color="#DC2626" />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={{ color: '#DC2626', fontWeight: '600' }}>Unable to Load Banks</Text>
-                            <Text style={{ color: '#991B1B', fontSize: 13, marginTop: 4 }}>{error}</Text>
+                <ScrollView contentContainerStyle={styles.content}>
+                    {/* Error Message */}
+                    {error && (
+                        <View style={[styles.errorCard, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}>
+                            <Ionicons name="alert-circle" size={24} color="#DC2626" />
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                                <Text style={{ color: '#DC2626', fontWeight: '600' }}>Unable to Load Banks</Text>
+                                <Text style={{ color: '#991B1B', fontSize: 13, marginTop: 4 }}>{error}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setManualMode(true)} style={[styles.retryBtn, { backgroundColor: colors.card, marginLeft: 8 }]}>
+                                <Text style={{ fontSize: 12, fontWeight: 'bold' }}>Enter Manually</Text>
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity onPress={() => setManualMode(true)} style={[styles.retryBtn, { backgroundColor: colors.card, marginLeft: 8 }]}>
-                            <Text style={{ fontSize: 12, fontWeight: 'bold' }}>Enter Manually</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+                    )}
 
-                {/* Linked Bank Card */}
-                {linkedBank ? (
-                    <View style={[styles.linkedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <Ionicons name="card" size={24} color={colors.primary} />
-                            <Text style={[styles.cardTitle, { color: colors.text }]}>Linked Bank Account</Text>
+                    {/* Linked Bank Card */}
+                    {linkedBank ? (
+                        <View style={[styles.linkedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                            <View style={styles.cardHeader}>
+                                <Ionicons name="card" size={24} color={colors.primary} />
+                                <Text style={[styles.cardTitle, { color: colors.text }]}>Linked Bank Account</Text>
+                            </View>
+                            <View style={styles.bankDetailRow}>
+                                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Bank</Text>
+                                <Text style={[styles.detailValue, { color: colors.text }]}>{linkedBank.bankName}</Text>
+                            </View>
+                            <View style={styles.bankDetailRow}>
+                                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Account Name</Text>
+                                <Text style={[styles.detailValue, { color: colors.text }]}>{linkedBank.accountName}</Text>
+                            </View>
+                            <View style={styles.bankDetailRow}>
+                                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Account Number</Text>
+                                <Text style={[styles.detailValue, { color: colors.text }]}>****{linkedBank.accountNumberLast4}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.changeBtn}
+                                onPress={() => setLinkedBank(null)}
+                            >
+                                <Text style={[styles.changeBtnText, { color: colors.primary }]}>Change Account</Text>
+                            </TouchableOpacity>
                         </View>
-                        <View style={styles.bankDetailRow}>
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Bank</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>{linkedBank.bankName}</Text>
-                        </View>
-                        <View style={styles.bankDetailRow}>
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Account Name</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>{linkedBank.accountName}</Text>
-                        </View>
-                        <View style={styles.bankDetailRow}>
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Account Number</Text>
-                            <Text style={[styles.detailValue, { color: colors.text }]}>****{linkedBank.accountNumberLast4}</Text>
-                        </View>
-                        <TouchableOpacity
-                            style={styles.changeBtn}
-                            onPress={() => setLinkedBank(null)}
-                        >
-                            <Text style={[styles.changeBtnText, { color: colors.primary }]}>Change Account</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <View style={styles.form}>
-                        <Text style={[styles.sectionTitle, { color: colors.text }]}>Link Bank Account</Text>
-                        <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-                            This account will be used to process your withdrawals. Please ensure the name matches your ID.
-                        </Text>
+                    ) : (
+                        <View style={styles.form}>
+                            <Text style={[styles.sectionTitle, { color: colors.text }]}>Link Bank Account</Text>
+                            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                                This account will be used to process your withdrawals. Please ensure the name matches your ID.
+                            </Text>
 
-                        {/* Manual Toggle */}
-                        <TouchableOpacity onPress={() => setManualMode(!manualMode)} style={{ alignSelf: 'flex-end', marginBottom: 10 }}>
-                            <Text style={{ color: colors.primary, fontWeight: '600' }}>{manualMode ? 'Switch to Automatic' : 'Enter Manually'}</Text>
-                        </TouchableOpacity>
+                            {/* Manual Toggle */}
+                            <TouchableOpacity onPress={() => setManualMode(!manualMode)} style={{ alignSelf: 'flex-end', marginBottom: 10 }}>
+                                <Text style={{ color: colors.primary, fontWeight: '600' }}>{manualMode ? 'Switch to Automatic' : 'Enter Manually'}</Text>
+                            </TouchableOpacity>
 
-                        {manualMode ? (
-                            <>
-                                <TextInput
-                                    style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-                                    placeholder="Bank Name"
-                                    placeholderTextColor={colors.textSecondary}
-                                    value={manualBankName}
-                                    onChangeText={setManualBankName}
-                                />
-                                <TextInput
-                                    style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-                                    placeholder="Account Name"
-                                    placeholderTextColor={colors.textSecondary}
-                                    value={manualAccountName}
-                                    onChangeText={setManualAccountName}
-                                />
-                                <TextInput
-                                    style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-                                    placeholder="Account Number"
-                                    placeholderTextColor={colors.textSecondary}
-                                    keyboardType="numeric"
-                                    maxLength={20}
-                                    value={accountNumber}
-                                    onChangeText={setAccountNumber}
-                                />
-                                <Text style={{ fontSize: 12, color: colors.textSecondary, fontStyle: 'italic' }}>
-                                    * Manual entries require admin approval (approx. 24h).
-                                </Text>
-                            </>
-                        ) : (
-                            <>
-                                {/* Bank Selection */}
-                                <TouchableOpacity
-                                    style={[styles.input, { borderColor: colors.border }]}
-                                    onPress={() => setShowBankPicker(!showBankPicker)}
-                                >
-                                    <Text style={{ color: selectedBank ? colors.text : colors.textSecondary }}>
-                                        {selectedBank ? selectedBank.name : 'Select Bank'}
+                            {manualMode ? (
+                                <>
+                                    <TextInput
+                                        style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+                                        placeholder="Bank Name"
+                                        placeholderTextColor={colors.textSecondary}
+                                        value={manualBankName}
+                                        onChangeText={setManualBankName}
+                                    />
+                                    <TextInput
+                                        style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+                                        placeholder="Account Name"
+                                        placeholderTextColor={colors.textSecondary}
+                                        value={manualAccountName}
+                                        onChangeText={setManualAccountName}
+                                    />
+                                    <TextInput
+                                        style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+                                        placeholder="Account Number"
+                                        placeholderTextColor={colors.textSecondary}
+                                        keyboardType="numeric"
+                                        maxLength={20}
+                                        value={accountNumber}
+                                        onChangeText={setAccountNumber}
+                                    />
+                                    <Text style={{ fontSize: 12, color: colors.textSecondary, fontStyle: 'italic' }}>
+                                        * Manual entries require admin approval (approx. 24h).
                                     </Text>
-                                    <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-                                </TouchableOpacity>
-
-                                {showBankPicker && (
-                                    <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                                        {banks.map((bank, index) => (
-                                            <TouchableOpacity
-                                                key={`${bank.code}-${index}`}
-                                                style={[styles.pickerItem, { borderBottomColor: colors.border }]}
-                                                onPress={() => {
-                                                    setSelectedBank(bank);
-                                                    setShowBankPicker(false);
-                                                }}
-                                            >
-                                                <Text style={{ color: colors.text }}>{bank.name}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                )}
-
-                                {/* Account Number */}
-                                <TextInput
-                                    style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-                                    placeholder="Account Number (10 digits)"
-                                    placeholderTextColor={colors.textSecondary}
-                                    keyboardType="numeric"
-                                    maxLength={10}
-                                    value={accountNumber}
-                                    onChangeText={setAccountNumber}
-                                    onBlur={handleResolve}
-                                />
-
-                                {resolving && <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 10 }} />}
-
-                                {resolvedAccount && (
-                                    <View style={[styles.resolvedBox, { backgroundColor: colors.primary + '10' }]}>
-                                        <Text style={[styles.resolvedLabel, { color: colors.textSecondary }]}>Verified Name</Text>
-                                        <Text style={[styles.resolvedName, { color: colors.text }]}>{resolvedAccount.accountName}</Text>
-                                    </View>
-                                )}
-                            </>
-                        )}
-
-                        <TouchableOpacity
-                            style={[
-                                styles.saveBtn,
-                                { backgroundColor: (resolvedAccount && !submitting) ? colors.primary : colors.border }
-                            ]}
-                            disabled={submitting || (!manualMode && !resolvedAccount) || (manualMode && (!manualBankName || !manualAccountName || !accountNumber))}
-                            onPress={handleSave}
-                        >
-                            {submitting ? (
-                                <ActivityIndicator color="#FFF" />
+                                </>
                             ) : (
-                                <Text style={styles.saveBtnText}>Save Account Details</Text>
+                                <>
+                                    {/* Bank Selection */}
+                                    <TouchableOpacity
+                                        style={[styles.input, { borderColor: colors.border }]}
+                                        onPress={() => setShowBankPicker(!showBankPicker)}
+                                    >
+                                        <Text style={{ color: selectedBank ? colors.text : colors.textSecondary }}>
+                                            {selectedBank ? selectedBank.name : 'Select Bank'}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+                                    </TouchableOpacity>
+
+                                    {showBankPicker && (
+                                        <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                                            {banks.map((bank, index) => (
+                                                <TouchableOpacity
+                                                    key={`${bank.code}-${index}`}
+                                                    style={[styles.pickerItem, { borderBottomColor: colors.border }]}
+                                                    onPress={() => {
+                                                        setSelectedBank(bank);
+                                                        setShowBankPicker(false);
+                                                    }}
+                                                >
+                                                    <Text style={{ color: colors.text }}>{bank.name}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )}
+
+                                    {/* Account Number */}
+                                    <TextInput
+                                        style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+                                        placeholder="Account Number (10 digits)"
+                                        placeholderTextColor={colors.textSecondary}
+                                        keyboardType="numeric"
+                                        maxLength={10}
+                                        value={accountNumber}
+                                        onChangeText={setAccountNumber}
+                                        onBlur={handleResolve}
+                                    />
+
+                                    {resolving && <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 10 }} />}
+
+                                    {resolvedAccount && (
+                                        <View style={[styles.resolvedBox, { backgroundColor: colors.primary + '10' }]}>
+                                            <Text style={[styles.resolvedLabel, { color: colors.textSecondary }]}>Verified Name</Text>
+                                            <Text style={[styles.resolvedName, { color: colors.text }]}>{resolvedAccount.accountName}</Text>
+                                        </View>
+                                    )}
+                                </>
                             )}
-                        </TouchableOpacity>
-                    </View>
-                )}
-            </ScrollView>
+
+                            <TouchableOpacity
+                                style={[
+                                    styles.saveBtn,
+                                    { backgroundColor: (resolvedAccount && !submitting) ? colors.primary : colors.border }
+                                ]}
+                                disabled={submitting || (!manualMode && !resolvedAccount) || (manualMode && (!manualBankName || !manualAccountName || !accountNumber))}
+                                onPress={handleSave}
+                            >
+                                {submitting ? (
+                                    <ActivityIndicator color="#FFF" />
+                                ) : (
+                                    <Text style={styles.saveBtnText}>Save Account Details</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 };

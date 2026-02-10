@@ -79,7 +79,10 @@ export class ValidationService {
                 lastReset: schema.profiles.lastValidationReset,
                 totalCount: schema.profiles.totalValidationsCount,
                 activeDays: schema.profiles.activeDaysCount,
-                lastActive: schema.profiles.lastActiveDate
+                lastActive: schema.profiles.lastActiveDate,
+                interests: schema.profiles.interests,
+                primaryLanguage: schema.profiles.primaryLanguage,
+                verifiedDialects: schema.profiles.verifiedDialects,
             })
             .from(schema.profiles)
             .where(eq(schema.profiles.id, validatorId))
@@ -87,6 +90,38 @@ export class ValidationService {
 
         if (profile && (profile.trustScore ?? 100) <= TRUST_SCORE_MIN) {
             throw new ForbiddenException(MONETIZATION_ERRORS.INSUFFICIENT_TRUST);
+        }
+
+        // 5b. Language Capability Check
+        // Ensure user speaks the language of the clip
+        const clipLanguage = clip[0].language;
+        if (clipLanguage) {
+            const userLanguages = new Set<string>();
+
+            // Add primary language
+            if (profile?.primaryLanguage) {
+                userLanguages.add(profile.primaryLanguage.toLowerCase());
+            }
+
+            // Add verified dialects/languages
+            if (Array.isArray(profile?.verifiedDialects)) {
+                (profile.verifiedDialects as string[]).forEach(d => userLanguages.add(d.toLowerCase()));
+            }
+
+            // Add interests (self-declared languages from onboarding)
+            if (Array.isArray(profile?.interests)) {
+                (profile.interests as string[]).forEach(i => userLanguages.add(i.toLowerCase()));
+            }
+
+            // Check for match
+            const isMatch = Array.from(userLanguages).some(userLang =>
+                clipLanguage.toLowerCase().includes(userLang) ||
+                userLang.includes(clipLanguage.toLowerCase())
+            );
+
+            if (!isMatch && userLanguages.size > 0) { // Only enforce if user has languages set
+                throw new ForbiddenException(`You can only validate clips in languages you speak. Please add ${clipLanguage} to your profile interests.`);
+            }
         }
 
         // 6. Insert the validation

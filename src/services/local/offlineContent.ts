@@ -21,6 +21,7 @@ export interface SaveVoiceClipParams {
   duration: number;
   clipType?: 'original' | 'duet';
   originalClipId?: string;
+  onProgress?: (progress: number) => void;
 }
 
 export interface SaveVideoClipParams {
@@ -30,6 +31,7 @@ export interface SaveVideoClipParams {
   language: string;
   dialect?: string;
   thumbnailUri?: string;
+  onProgress?: (progress: number) => void;
 }
 
 export interface SaveStoryParams {
@@ -97,7 +99,7 @@ export async function saveVoiceClip(params: SaveVoiceClipParams): Promise<SaveRe
   if (online) {
     // Try to save directly
     try {
-      const uploadResult = await uploadAudioFile(params.audioUri, params.userId);
+      const uploadResult = await uploadAudioFile(params.audioUri, params.userId, undefined, params.onProgress);
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || 'Upload failed');
       }
@@ -151,10 +153,10 @@ export async function saveVoiceClip(params: SaveVoiceClipParams): Promise<SaveRe
     return { success: true, isOffline: true, queuedId };
   } catch (error) {
     console.error('[OfflineContent] Failed to queue voice clip:', error);
-    return { 
-      success: false, 
-      isOffline: !online, 
-      error: error instanceof Error ? error.message : 'Failed to save' 
+    return {
+      success: false,
+      isOffline: !online,
+      error: error instanceof Error ? error.message : 'Failed to save'
     };
   }
 }
@@ -167,7 +169,7 @@ export async function saveVideoClip(params: SaveVideoClipParams): Promise<SaveRe
 
   if (online) {
     try {
-      const uploadResult = await uploadVideoFile(params.videoUri, params.userId);
+      const uploadResult = await uploadVideoFile(params.videoUri, params.userId, undefined, undefined, params.onProgress);
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || 'Upload failed');
       }
@@ -225,10 +227,10 @@ export async function saveVideoClip(params: SaveVideoClipParams): Promise<SaveRe
     return { success: true, isOffline: true, queuedId };
   } catch (error) {
     console.error('[OfflineContent] Failed to queue video clip:', error);
-    return { 
-      success: false, 
-      isOffline: !online, 
-      error: error instanceof Error ? error.message : 'Failed to save' 
+    return {
+      success: false,
+      isOffline: !online,
+      error: error instanceof Error ? error.message : 'Failed to save'
     };
   }
 }
@@ -254,10 +256,10 @@ export async function saveStory(params: SaveStoryParams): Promise<SaveResult> {
 
       const { error: upErr } = await supabase.storage
         .from('stories')
-        .upload(path, bytes, { 
-          contentType: params.contentType, 
-          cacheControl: '3600', 
-          upsert: false 
+        .upload(path, bytes, {
+          contentType: params.contentType,
+          cacheControl: '3600',
+          upsert: false
         });
 
       if (upErr) throw upErr;
@@ -286,7 +288,7 @@ export async function saveStory(params: SaveStoryParams): Promise<SaveResult> {
   try {
     const ext = getFileExtension(params.mediaUri);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    
+
     const metadata: UploadMetadata = {
       caption: params.caption,
       expires_at: expiresAt,
@@ -305,10 +307,10 @@ export async function saveStory(params: SaveStoryParams): Promise<SaveResult> {
     return { success: true, isOffline: true, queuedId };
   } catch (error) {
     console.error('[OfflineContent] Failed to queue story:', error);
-    return { 
-      success: false, 
-      isOffline: !online, 
-      error: error instanceof Error ? error.message : 'Failed to save' 
+    return {
+      success: false,
+      isOffline: !online,
+      error: error instanceof Error ? error.message : 'Failed to save'
     };
   }
 }
@@ -325,11 +327,11 @@ export async function toggleLike(
   const online = await isOnline();
   const newLikedState = !currentlyLiked;
 
-  const mappedTargetType: TargetType = 
-    targetType === 'voice' ? 'voice_clip' 
-    : targetType === 'video' ? 'video_clip' 
-    : targetType === 'story' ? 'story' 
-    : 'comment';
+  const mappedTargetType: TargetType =
+    targetType === 'voice' ? 'voice_clip'
+      : targetType === 'video' ? 'video_clip'
+        : targetType === 'story' ? 'story'
+          : 'comment';
 
   if (online) {
     try {
@@ -443,17 +445,17 @@ export async function getEffectiveLikeState(
   targetType: 'voice' | 'video' | 'story' | 'comment',
   serverLikeState: boolean
 ): Promise<boolean> {
-  const mappedTargetType: TargetType = 
-    targetType === 'voice' ? 'voice_clip' 
-    : targetType === 'video' ? 'video_clip' 
-    : targetType === 'story' ? 'story' 
-    : 'comment';
+  const mappedTargetType: TargetType =
+    targetType === 'voice' ? 'voice_clip'
+      : targetType === 'video' ? 'video_clip'
+        : targetType === 'story' ? 'story'
+          : 'comment';
 
   const pendingState = await getPendingLikeState(userId, targetId, mappedTargetType);
-  
+
   if (pendingState === 'liked') return true;
   if (pendingState === 'unliked') return false;
-  
+
   return serverLikeState;
 }
 

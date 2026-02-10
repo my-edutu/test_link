@@ -11,9 +11,14 @@ export interface Badge {
     description: string;
     imageUrl: string;
     category: 'contributor' | 'validator' | 'game' | 'social';
-    tier?: 'bronze' | 'silver' | 'gold';
+    tier?: 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
     requirementType?: string;
     requirementValue?: number;
+    criteria?: {
+        unlock_reward?: string;
+        motivation?: string;
+        [key: string]: any;
+    };
 }
 
 export interface UserBadge extends Badge {

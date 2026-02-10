@@ -23,19 +23,10 @@ import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthProvider';
 import { Colors, Gradients, Typography, Layout } from '../constants/Theme';
 import { GlassCard } from '../components/GlassCard';
+import { SmartSelectionModal } from '../components/SmartSelectionModal';
+import { COUNTRIES, ALL_LANGUAGES, Country, Language } from '../constants/CountryData';
 
 const { width } = Dimensions.get('window');
-
-const LANGUAGES = [
-    { name: 'Yoruba', icon: '🗣️' },
-    { name: 'Igbo', icon: '🍲' },
-    { name: 'Hausa', icon: '🕌' },
-    { name: 'Pidgin', icon: '🇳🇬' },
-    { name: 'Efik', icon: '🌊' },
-    { name: 'Kanuri', icon: '🌵' },
-    { name: 'Tiv', icon: '🌾' },
-    { name: 'Other', icon: '✨' }
-];
 
 const CARTOON_AVATARS = [
     'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
@@ -49,7 +40,7 @@ export default function ModernProfileSetup() {
     const { user, refreshProfile } = useAuth();
 
     const [step, setStep] = useState(1);
-    const [selectedLangs, setSelectedLangs] = useState<string[]>([]);
+    const [selectedLangs, setSelectedLangs] = useState<Language[]>([]);
     const [otherLang, setOtherLang] = useState('');
     const [loading, setLoading] = useState(false);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -57,19 +48,21 @@ export default function ModernProfileSetup() {
 
     // Location & Identity State
     const [username, setUsername] = useState('');
-    const [country, setCountry] = useState('Nigeria');
+    const [country, setCountry] = useState<Country>(COUNTRIES.find(c => c.name === 'Nigeria') || COUNTRIES[0]);
     const [state, setState] = useState('');
     const [city, setCity] = useState('');
 
-    const toggleLang = (lang: string) => {
-        if (selectedLangs.includes(lang)) {
-            setSelectedLangs(selectedLangs.filter(l => l !== lang));
+    // Modal State
+    const [isLangModalVisible, setLangModalVisible] = useState(false);
+    const [isCountryModalVisible, setCountryModalVisible] = useState(false);
+
+    const toggleLang = (lang: Language) => {
+        if (selectedLangs.some(l => l.name === lang.name)) {
+            setSelectedLangs(selectedLangs.filter(l => l.name !== lang.name));
         } else {
             setSelectedLangs([...selectedLangs, lang]);
         }
     };
-
-    const isOtherSelected = selectedLangs.includes('Other');
 
     const handleNext = () => {
         if (step === 1 && selectedLangs.length === 0) {
@@ -144,9 +137,8 @@ export default function ModernProfileSetup() {
     const completeSetup = async () => {
         if (!user) return;
 
-        const finalLangs = isOtherSelected
-            ? [...selectedLangs.filter(l => l !== 'Other'), otherLang].filter(l => l.trim() !== '')
-            : selectedLangs;
+        const finalLangs = selectedLangs.map(l => l.name);
+        if (otherLang.trim()) finalLangs.push(otherLang.trim());
 
         setLoading(true);
         try {
@@ -159,7 +151,7 @@ export default function ModernProfileSetup() {
                     username: username.toLowerCase().trim(),
                     full_name: user.fullName || user.firstName || username,
                     interests: finalLangs,
-                    country: country,
+                    country: country.name,
                     state: state,
                     city: city,
                     avatar_url: avatarUrl || user.imageUrl, // Use uploaded, or Clerk, or fallback
@@ -216,35 +208,45 @@ export default function ModernProfileSetup() {
                             <Text style={styles.subhead}>Which languages do you speak or want to help preserve?</Text>
 
                             <View style={styles.chipGrid}>
-                                {LANGUAGES.map((lang) => {
-                                    const isActive = selectedLangs.includes(lang.name);
-                                    return (
-                                        <TouchableOpacity
-                                            key={lang.name}
-                                            style={[styles.chip, isActive && styles.chipActive]}
-                                            onPress={() => toggleLang(lang.name)}
-                                        >
-                                            <Text style={styles.chipIcon}>{lang.icon}</Text>
-                                            <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{lang.name}</Text>
-                                            {isActive && (
-                                                <MaterialIcons name="check-circle" size={18} color="white" style={styles.checkIcon} />
-                                            )}
-                                        </TouchableOpacity>
-                                    );
-                                })}
+                                <TouchableOpacity
+                                    style={[styles.chip, styles.addChip]}
+                                    onPress={() => setLangModalVisible(true)}
+                                >
+                                    <Ionicons name="add" size={24} color={Colors.dark.primary} />
+                                    <Text style={[styles.chipText, { color: Colors.dark.primary }]}>Add Language</Text>
+                                </TouchableOpacity>
+
+                                {selectedLangs.map((lang) => (
+                                    <TouchableOpacity
+                                        key={lang.name}
+                                        style={[styles.chip, styles.chipActive]}
+                                        onPress={() => toggleLang(lang)}
+                                    >
+                                        <Text style={styles.chipIcon}>🗣️</Text>
+                                        <Text style={[styles.chipText, styles.chipTextActive]}>{lang.name}</Text>
+                                        <MaterialIcons name="close" size={18} color="white" style={styles.checkIcon} />
+                                    </TouchableOpacity>
+                                ))}
                             </View>
 
-                            {isOtherSelected && (
-                                <GlassCard style={styles.otherInputCard} intensity={20}>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Specify other languages..."
-                                        placeholderTextColor="rgba(255,255,255,0.4)"
-                                        value={otherLang}
-                                        onChangeText={setOtherLang}
-                                    />
-                                </GlassCard>
-                            )}
+                            <SmartSelectionModal
+                                visible={isLangModalVisible}
+                                onClose={() => setLangModalVisible(false)}
+                                title="Select Languages"
+                                items={ALL_LANGUAGES}
+                                searchPlaceholder="Search languages..."
+                                onSelect={(lang) => toggleLang(lang)}
+                                selectedItems={selectedLangs}
+                                renderItem={(item: Language, isSelected) => (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={{ fontSize: 24, marginRight: 12 }}>🗣️</Text>
+                                        <View>
+                                            <Text style={{ fontSize: 16, color: 'white', fontWeight: 'bold' }}>{item.name}</Text>
+                                            {item.nativeName && <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{item.nativeName}</Text>}
+                                        </View>
+                                    </View>
+                                )}
+                            />
                         </Animated.View>
                     ) : (
                         <Animated.View entering={SlideInRight.duration(600)} style={styles.stepView}>
@@ -265,6 +267,39 @@ export default function ModernProfileSetup() {
                                     placeholder="e.g. Lagos"
                                     value={state}
                                     onChangeText={setState}
+                                />
+                                <TouchableOpacity onPress={() => setCountryModalVisible(true)}>
+                                    <View pointerEvents="none">
+                                        <InputGroup
+                                            label="Country"
+                                            icon="flag-outline"
+                                            placeholder="Select Country"
+                                            value={country.name}
+                                            editable={false}
+                                        />
+                                    </View>
+                                </TouchableOpacity>
+
+                                <SmartSelectionModal
+                                    visible={isCountryModalVisible}
+                                    onClose={() => setCountryModalVisible(false)}
+                                    title="Select Country"
+                                    items={COUNTRIES}
+                                    searchPlaceholder="Search countries..."
+                                    onSelect={(c) => {
+                                        setCountry(c);
+                                        setCountryModalVisible(false);
+                                    }}
+                                    selectedItems={[country]}
+                                    renderItem={(item: Country, isSelected) => (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 24, marginRight: 12 }}>{item.flag}</Text>
+                                            <View>
+                                                <Text style={{ fontSize: 16, color: 'white', fontWeight: 'bold' }}>{item.name}</Text>
+                                                <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{item.code}</Text>
+                                            </View>
+                                        </View>
+                                    )}
                                 />
                                 <InputGroup
                                     label="Town / City (Optional)"
@@ -428,6 +463,11 @@ const styles = StyleSheet.create({
     chipActive: {
         backgroundColor: 'rgba(255, 138, 0, 0.15)', // Tinted background
         borderColor: Colors.dark.primary,
+    },
+    addChip: {
+        borderStyle: 'dashed',
+        borderColor: Colors.dark.primary,
+        backgroundColor: 'rgba(255, 138, 0, 0.05)',
     },
     chipIcon: {
         fontSize: 20

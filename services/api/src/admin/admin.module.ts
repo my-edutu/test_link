@@ -3,6 +3,7 @@ import { AdminController } from './admin.controller';
 import { AdminPayoutController } from './admin-payout.controller';
 import { AdminPayoutService } from './admin-payout.service';
 import { CommonModule } from '../common/common.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 /**
  * Admin Module
@@ -13,7 +14,7 @@ import { CommonModule } from '../common/common.module';
  * - Role-based access control
  */
 @Module({
-    imports: [CommonModule],
+    imports: [CommonModule, NotificationModule],
     controllers: [AdminController, AdminPayoutController],
     providers: [AdminPayoutService],
     exports: [AdminPayoutService],

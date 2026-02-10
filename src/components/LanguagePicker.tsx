@@ -1,4 +1,3 @@
-// src/components/LanguagePicker.tsx
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -11,125 +10,36 @@ import {
   TextInput,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { supabase } from '../supabaseClient';
 import { useTheme } from '../context/ThemeContext';
 import { GlassCard } from './GlassCard';
+import { COUNTRIES, Country as CountryType, Language as LanguageType } from '../constants/CountryData';
 
 const { width, height } = Dimensions.get('window');
 
-interface Language {
-  id: string;
-  name: string;
-  dialect?: string;
-  countryCode?: string; // Optional, for reference
-}
-
-interface Country {
-  code: string;
-  name: string;
-  flagEmoji: string;
-  languages: Language[];
-}
+// Adaptation types to match component usage if needed, 
+// or update component to use CountryType/LanguageType directly.
+// CountryType has { code, name, flag, languages }
+// LanguageType has { code, name, nativeName }
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onSelect: (language: Language) => void;
-  selectedLanguage?: Language;
+  onSelect: (language: LanguageType) => void;
+  selectedLanguage?: LanguageType;
 }
 
-// Data Structure
-const COUNTRIES: Country[] = [
-  {
-    code: 'NG',
-    name: 'Nigeria',
-    flagEmoji: '🇳🇬',
-    languages: [
-      { id: 'hausa-kano', name: 'Hausa', dialect: 'Kano' },
-      { id: 'yoruba-ekiti', name: 'Yoruba', dialect: 'Ekiti Dialect' },
-      { id: 'yoruba-lagos', name: 'Yoruba', dialect: 'Lagos Dialect' },
-      { id: 'igbo-nsukka', name: 'Igbo', dialect: 'Nsukka' },
-      { id: 'igbo-central', name: 'Igbo', dialect: 'Central' },
-      { id: 'pidgin-ng', name: 'Pidgin', dialect: 'Nigerian' },
-      { id: 'efik', name: 'Efik' },
-      { id: 'ibibio', name: 'Ibibio' },
-      { id: 'tiv', name: 'Tiv' },
-      { id: 'edo', name: 'Edo' },
-      { id: 'urhobo', name: 'Urhobo' },
-      { id: 'fulfulde', name: 'Fulfulde' },
-      { id: 'kanuri', name: 'Kanuri' },
-      { id: 'nupe', name: 'Nupe' },
-      { id: 'igala', name: 'Igala' },
-    ]
-  },
-  {
-    code: 'GH',
-    name: 'Ghana',
-    flagEmoji: '🇬🇭',
-    languages: [
-      { id: 'twi-ashanti', name: 'Twi', dialect: 'Ashanti' },
-      { id: 'twi-fante', name: 'Fante' },
-      { id: 'ewe', name: 'Ewe' },
-      { id: 'ga', name: 'Ga' },
-      { id: 'dagbani', name: 'Dagbani' },
-      { id: 'pidgin-gh', name: 'Pidgin', dialect: 'Ghanaian' },
-    ]
-  },
-  {
-    code: 'KE',
-    name: 'Kenya',
-    flagEmoji: '🇰🇪',
-    languages: [
-      { id: 'swahili-coastal', name: 'Swahili', dialect: 'Coastal' },
-      { id: 'kikuyu', name: 'Kikuyu' },
-      { id: 'luo', name: 'Luo' },
-      { id: 'kamba', name: 'Kamba' },
-      { id: 'kalenjin', name: 'Kalenjin' },
-    ]
-  },
-  {
-    code: 'ZA',
-    name: 'South Africa',
-    flagEmoji: '🇿🇦',
-    languages: [
-      { id: 'zulu-kwazulu', name: 'Zulu', dialect: 'KwaZulu-Natal' },
-      { id: 'xhosa', name: 'Xhosa' },
-      { id: 'afrikaans', name: 'Afrikaans' },
-      { id: 'sotho-southern', name: 'Sesotho' },
-    ]
-  },
-  {
-    code: 'ET',
-    name: 'Ethiopia',
-    flagEmoji: '🇪🇹',
-    languages: [
-      { id: 'amharic-central', name: 'Amharic', dialect: 'Central' },
-      { id: 'oromo', name: 'Oromo' },
-      { id: 'tigrinya', name: 'Tigrinya' },
-      { id: 'somali-et', name: 'Somali' },
-    ]
-  },
-  {
-    code: 'GLOBAL',
-    name: 'Other',
-    flagEmoji: '🌍',
-    languages: [
-      { id: 'english', name: 'English' },
-      { id: 'french', name: 'French' },
-      { id: 'spanish', name: 'Spanish' },
-      { id: 'other', name: 'Other (Custom)...' },
-    ]
-  }
-];
-
 const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedLanguage }) => {
-  const { colors, theme } = useTheme();
+  const { colors, theme, isDark } = useTheme();
 
   // Navigation State
   const [step, setStep] = useState<'COUNTRY' | 'LANGUAGE'>('COUNTRY');
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<CountryType | null>(null);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,7 +50,9 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
   const [customDialect, setCustomDialect] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+  // Styles
+  const styles = useMemo(() => createStyles(colors, theme, isDark), [colors, theme, isDark]);
+
 
   // Derived Data
   const filteredCountries = useMemo(() => {
@@ -154,15 +66,13 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
     if (!searchQuery) return selectedCountry.languages;
 
     const q = searchQuery.toLowerCase();
-    // Special case for 'other'
 
     return selectedCountry.languages.filter(l =>
-      l.name.toLowerCase().includes(q) ||
-      (l.dialect && l.dialect.toLowerCase().includes(q))
+      l.name.toLowerCase().includes(q)
     );
   }, [selectedCountry, searchQuery]);
 
-  const handleCountrySelect = (country: Country) => {
+  const handleCountrySelect = (country: CountryType) => {
     setSelectedCountry(country);
     setSearchQuery(''); // Reset search for next step
     setStep('LANGUAGE');
@@ -174,17 +84,15 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
     setSearchQuery('');
   };
 
-  const handleLanguageSelect = (item: Language) => {
-    if (item.id === 'other') {
-      setShowCustomModal(true);
-    } else {
-      onSelect(item);
-      // Reset state for next time
-      setStep('COUNTRY');
-      setSelectedCountry(null);
-      setSearchQuery('');
-      onClose();
-    }
+  const handleLanguageSelect = (item: LanguageType) => {
+    // If we want to support 'other' logic from CountryData, we can add a check here.
+    // For now assuming all items are selectable.
+    onSelect(item);
+    // Reset state for next time
+    setStep('COUNTRY');
+    setSelectedCountry(null);
+    setSearchQuery('');
+    onClose();
   };
 
   const handleCustomLanguageSubmit = async () => {
@@ -194,14 +102,15 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
     }
 
     setLoading(true);
+    setLoading(true);
     try {
-      const newLanguage: Language = {
-        id: `custom-${Date.now()}`,
+      const newLanguage: LanguageType = {
+        code: `custom-${Date.now()}`,
         name: customLanguage.trim(),
-        dialect: customDialect.trim() || undefined
+        // dialect: customDialect.trim() || undefined // Dialect not in LanguageType yet
       };
 
-      // Optional: Save to DB in background
+      // Optional: Save to DB
       (async () => {
         try {
           await supabase.from('languages').insert({
@@ -225,13 +134,13 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
     }
   };
 
-  const renderCountryItem = ({ item }: { item: Country }) => (
+  const renderCountryItem = ({ item }: { item: CountryType }) => (
     <TouchableOpacity
       style={styles.itemContainer}
       onPress={() => handleCountrySelect(item)}
     >
       <View style={styles.itemContent}>
-        <Text style={styles.flagEmoji}>{item.flagEmoji}</Text>
+        <Text style={styles.flagEmoji}>{item.flag}</Text>
         <View style={styles.itemTextContainer}>
           <Text style={styles.itemName}>{item.name}</Text>
           <Text style={styles.itemSubtext}>{item.languages.length} Languages</Text>
@@ -241,24 +150,24 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
     </TouchableOpacity>
   );
 
-  const renderLanguageItem = ({ item }: { item: Language }) => (
+  const renderLanguageItem = ({ item }: { item: LanguageType }) => (
     <TouchableOpacity
       style={[
         styles.itemContainer,
-        selectedLanguage?.id === item.id && styles.selectedItem
+        selectedLanguage?.code === item.code && styles.selectedItem
       ]}
       onPress={() => handleLanguageSelect(item)}
     >
       <View style={styles.itemContent}>
         <View style={styles.itemTextContainer}>
           <Text style={styles.itemName}>{item.name}</Text>
-          {item.dialect && (
-            <Text style={styles.itemSubtext}>{item.dialect}</Text>
+          {item.nativeName && (
+            <Text style={styles.itemSubtext}>{item.nativeName}</Text>
           )}
         </View>
       </View>
-      {selectedLanguage?.id === item.id && (
-        <Ionicons name="checkmark" size={20} color={colors.primary} />
+      {selectedLanguage?.code === item.code && (
+        <Ionicons name="checkmark" size={20} color={Colors.dark.primary} />
       )}
     </TouchableOpacity>
   );
@@ -268,74 +177,92 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
       <Modal
         visible={visible}
         animationType="slide"
-        presentationStyle="pageSheet"
+        transparent={true} // Transparent for BlurView
         onRequestClose={onClose}
       >
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerTop}>
-              {step === 'LANGUAGE' ? (
-                <TouchableOpacity onPress={handleBackToCountry} style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={24} color={colors.text} />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                  <Ionicons name="close" size={24} color={colors.text} />
-                </TouchableOpacity>
-              )}
-
-              <Text style={styles.title}>
-                {step === 'COUNTRY' ? 'Select Country' : `Languages in ${selectedCountry?.name}`}
-              </Text>
-
-              {/* Spacer for alignment */}
-              <View style={{ width: 24 }} />
-            </View>
-
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder={step === 'COUNTRY' ? "Search country..." : "Search language (e.g. 'Igbo')..."}
-                placeholderTextColor={colors.textSecondary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCorrect={false}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* List */}
-          {step === 'COUNTRY' ? (
-            <FlatList
-              data={filteredCountries}
-              renderItem={renderCountryItem}
-              keyExtractor={(item) => item.code}
-              contentContainerStyle={styles.listContent}
-            />
-          ) : (
-            <FlatList
-              data={filteredLanguages}
-              renderItem={renderLanguageItem}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContent}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No languages found matching "{searchQuery}"</Text>
-                  <TouchableOpacity onPress={() => setShowCustomModal(true)}>
-                    <Text style={styles.addCustomText}>+ Add Custom Language</Text>
-                  </TouchableOpacity>
+        <View style={styles.overlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.keyboardView}
+          >
+            <BlurView
+              intensity={isDark ? 80 : 90}
+              tint={isDark ? 'dark' : 'light'}
+              style={styles.blurContainer}
+            >
+              <View style={styles.container}>
+                {/* Handle bar */}
+                <View style={styles.handleContainer}>
+                  <View style={styles.handle} />
                 </View>
-              }
-            />
-          )}
+
+                {/* Header */}
+                <View style={styles.header}>
+                  <View style={styles.headerTop}>
+                    {step === 'LANGUAGE' ? (
+                      <TouchableOpacity onPress={handleBackToCountry} style={styles.backButton}>
+                        <Ionicons name="arrow-back" size={24} color={colors.text} />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                        <Ionicons name="close" size={24} color={colors.text} />
+                      </TouchableOpacity>
+                    )}
+
+                    <Text style={styles.title}>
+                      {step === 'COUNTRY' ? 'Select Country' : `Languages in ${selectedCountry?.name}`}
+                    </Text>
+
+                    {/* Spacer for alignment */}
+                    <View style={{ width: 24 }} />
+                  </View>
+
+                  {/* Search Bar */}
+                  <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder={step === 'COUNTRY' ? "Search country..." : "Search language..."}
+                      placeholderTextColor={colors.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      autoCorrect={false}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* List */}
+                {step === 'COUNTRY' ? (
+                  <FlatList
+                    data={filteredCountries}
+                    renderItem={renderCountryItem}
+                    keyExtractor={(item) => item.code}
+                    contentContainerStyle={styles.listContent}
+                  />
+                ) : (
+                  <FlatList
+                    data={filteredLanguages}
+                    renderItem={renderLanguageItem}
+                    keyExtractor={(item, index) => item.code || index.toString()}
+                    contentContainerStyle={styles.listContent}
+                    ListEmptyComponent={
+                      <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>No languages found matching "{searchQuery}"</Text>
+                        <TouchableOpacity onPress={() => setShowCustomModal(true)}>
+                          <Text style={styles.addCustomText}>+ Add Custom Language</Text>
+                        </TouchableOpacity>
+                      </View>
+                    }
+                  />
+                )}
+              </View>
+            </BlurView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -393,18 +320,41 @@ const LanguagePicker: React.FC<Props> = ({ visible, onClose, onSelect, selectedL
   );
 };
 
-const createStyles = (colors: any, theme: string) => StyleSheet.create({
+const createStyles = (colors: any, theme: string, isDark: boolean) => StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  keyboardView: {
+    width: '100%',
+    height: '90%',
+  },
+  blurContainer: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  handleContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)',
   },
   header: {
-    paddingTop: 20,
     paddingBottom: 10,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    // backgroundColor: colors.surface, // Removed to let blur show
   },
   headerTop: {
     flexDirection: 'row',

@@ -374,3 +374,10 @@ export const validationQueue = pgTable('validation_queue', {
     expiresAt: timestamp('expires_at'),
     priority: integer('priority').default(0), // Higher priority first
 });
+
+export const followers = pgTable('followers', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    followerId: text('follower_id').notNull(), // Clerk user ID
+    followingId: text('following_id').notNull(), // Clerk user ID
+    createdAt: timestamp('created_at').defaultNow(),
+});

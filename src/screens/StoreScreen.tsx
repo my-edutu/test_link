@@ -88,12 +88,12 @@ const StoreScreen = () => {
             style={[
                 styles.rewardCard,
                 {
-                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)',
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.card,
                     borderColor: colors.borderLight
                 },
                 balance < item.cost && styles.rewardCardDisabled
             ]}
-            intensity={isDark ? 20 : 60}
+            intensity={isDark ? 20 : 0}
         >
             <View style={[styles.rewardIcon, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
                 <Text style={styles.rewardIconText}>{item.icon}</Text>
@@ -136,7 +136,7 @@ const StoreScreen = () => {
                 <View style={[
                     styles.storeBalance,
                     {
-                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)',
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.card,
                         borderColor: colors.borderLight
                     }
                 ]}>
@@ -151,7 +151,7 @@ const StoreScreen = () => {
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>Coming Soon</Text>
                     <View style={[
                         styles.comingSoonCard,
-                        { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.6)' }
+                        { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.card }
                     ]}>
                         <Text style={[styles.previewItem, { color: colors.textSecondary }]}>🎓 Language Certificates</Text>
                         <Text style={[styles.previewItem, { color: colors.textSecondary }]}>🎁 Cultural Merchandise</Text>
@@ -195,6 +195,11 @@ const styles = StyleSheet.create({
         paddingVertical: 24,
         borderRadius: 24,
         borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
     },
     storeBalanceLabel: {
         ...Typography.caption,
@@ -214,6 +219,11 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         alignItems: 'center',
         borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
     },
     rewardCardDisabled: {
         opacity: 0.6,
@@ -281,6 +291,11 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         padding: 20,
         gap: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
     },
     previewItem: {
         ...Typography.body,

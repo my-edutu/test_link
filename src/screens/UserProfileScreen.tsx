@@ -27,6 +27,9 @@ import { Colors, Typography, Layout } from '../constants/Theme';
 import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassCard } from '../components/GlassCard';
+import { badgesApi, UserBadge } from '../services/badgesApi';
+import BadgeDetailModal from '../components/BadgeDetailModal';
+import ProfileBadgesTab from '../components/profile/ProfileBadgesTab';
 
 const { width, height } = Dimensions.get('window');
 
@@ -90,6 +93,17 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const [followingCount, setFollowingCount] = useState(0);
   const [mutualFollowersCount, setMutualFollowersCount] = useState<number | null>(null);
   const [videoStoriesCount, setVideoStoriesCount] = useState(0);
+
+  // Badges state
+  const [userBadges, setUserBadges] = useState<any[]>([]); // Using any[] to avoid strict type issues for now, or import UserBadge
+  const [nextMilestone, setNextMilestone] = useState<{
+    badge: string;
+    remaining: number;
+    type: 'followers' | 'validations';
+  } | null>(null);
+
+  const [selectedBadge, setSelectedBadge] = useState<any | null>(null);
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
 
   // Report modal state
   const [showReportModal, setShowReportModal] = useState(false);
@@ -387,6 +401,7 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       await Promise.all([
         fetchUserProfile(),
         fetchVoiceClips(),
+        fetchUserBadges(), // Add this
         fetchFollowData(),
         fetchVideoStoriesCount()
       ]);
@@ -403,6 +418,34 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     setRefreshing(true);
     await loadProfileData();
     setRefreshing(false);
+  };
+
+  // Fetch user badges
+  const fetchUserBadges = async () => {
+    if (!targetUserId) return;
+    try {
+      const badges = await badgesApi.getUserBadges(targetUserId);
+      setUserBadges(badges);
+
+      // Calculate next milestone (Client-side logic for immediate feedback)
+      if (followerCount < 100) {
+        setNextMilestone({ badge: 'Voice Pioneer', remaining: 100 - followerCount, type: 'followers' });
+      } else if (followerCount < 500) {
+        setNextMilestone({ badge: 'Cultural Connector', remaining: 500 - followerCount, type: 'followers' });
+      } else if (followerCount < 1000) {
+        setNextMilestone({ badge: 'Language Influencer', remaining: 1000 - followerCount, type: 'followers' });
+      } else if (followerCount < 2000) {
+        setNextMilestone({ badge: 'Community Validator', remaining: 2000 - followerCount, type: 'followers' });
+      } else if (followerCount < 5000) {
+        setNextMilestone({ badge: 'Lingua Ambassador', remaining: 5000 - followerCount, type: 'followers' });
+      } else if (followerCount < 10000) {
+        setNextMilestone({ badge: 'AI Voice Leader', remaining: 10000 - followerCount, type: 'followers' });
+      } else {
+        setNextMilestone(null);
+      }
+    } catch (error) {
+      console.error('Error fetching badges:', error);
+    }
   };
 
   // Load data when component mounts
@@ -753,87 +796,14 @@ const UserProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
 
           {/* Page 2: Badges */}
-          <View style={{ width, minHeight: 400 }}>
-            <View style={styles.badgesSection}>
-              {/* Promotion Progress (Only for Users) */}
-              {userProfile?.user_role === 'user' && (
-                <View style={[styles.progressCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFF' }]}>
-                  <View style={styles.progressHeader}>
-                    <Text style={[styles.progressTitle, { color: colors.text }]}>Path to Validator</Text>
-                    <Ionicons name="ribbon-outline" size={20} color={Colors.primary} />
-                  </View>
-                  <Text style={[styles.progressSubtitle, { color: colors.textSecondary }]}>
-                    Unlock 1.4x rewards and validation tools
-                  </Text>
-
-                  {/* Validations Progress */}
-                  <View style={styles.progressItem}>
-                    <View style={styles.progressLabelRow}>
-                      <Text style={[styles.progressLabel, { color: colors.text }]}>Validations</Text>
-                      <Text style={[styles.progressValue, { color: colors.text }]}>
-                        {userProfile?.total_validations_count || 0} / 200
-                      </Text>
-                    </View>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          { width: `${Math.min(((userProfile?.total_validations_count || 0) / 200) * 100, 100)}%` }
-                        ]}
-                      />
-                    </View>
-                  </View>
-
-                  {/* Active Days Progress */}
-                  <View style={styles.progressItem}>
-                    <View style={styles.progressLabelRow}>
-                      <Text style={[styles.progressLabel, { color: colors.text }]}>Active Days</Text>
-                      <Text style={[styles.progressValue, { color: colors.text }]}>
-                        {userProfile?.active_days_count || 0} / 10
-                      </Text>
-                    </View>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          { width: `${Math.min(((userProfile?.active_days_count || 0) / 10) * 100, 100)}%` }
-                        ]}
-                      />
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              <View style={styles.badgeCard}>
-                <View style={styles.badgeIcon}>
-                  <Ionicons name="sparkles" size={32} color="#FF8A00" />
-                </View>
-                <View style={styles.badgeContent}>
-                  <Text style={styles.badgeTitle}>Language Pioneer</Text>
-                  <Text style={styles.badgeDescription}>
-                    Welcome to Lingualink AI! Ready to preserve languages.
-                  </Text>
-                  <Text style={styles.badgeDate}>Earned today</Text>
-                </View>
-              </View>
-
-              <View style={styles.lockedBadgesContainer}>
-                <Text style={styles.sectionTitle}>Locked Badges</Text>
-                <View style={styles.lockedBadge}>
-                  <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
-                  <Text style={styles.lockedBadgeText}>First Recording</Text>
-                </View>
-                <View style={styles.lockedBadge}>
-                  <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
-                  <Text style={styles.lockedBadgeText}>Story Teller</Text>
-                </View>
-                <View style={styles.lockedBadge}>
-                  <Ionicons name="lock-closed" size={24} color="#9CA3AF" />
-                  <Text style={styles.lockedBadgeText}>Community Helper</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+          <ProfileBadgesTab
+            userProfile={userProfile}
+            userBadges={userBadges}
+            nextMilestone={nextMilestone}
+            followerCount={followerCount}
+            isDark={isDark}
+            colors={colors}
+          />
 
           {/* Page 3: Rewards */}
           <View style={{ width, minHeight: 400 }}>
@@ -994,23 +964,7 @@ const styles = StyleSheet.create({
   clipActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 8 },
   actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.05)', paddingVertical: 8, borderRadius: 10 },
   actionText: { fontSize: 12, color: '#FFF', fontWeight: '600' },
-  badgesSection: { padding: 20 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 16, marginBottom: 16 },
-  badgeIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,138,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  badgeContent: { flex: 1 },
-  badgeTitle: { fontSize: 16, fontWeight: 'bold', color: '#FFF', marginBottom: 4 },
-  badgeDescription: { fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 18 },
-  badgeDate: { fontSize: 11, color: Colors.primary, fontWeight: 'bold', marginTop: 4 },
-  lockedBadgesContainer: { marginTop: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginBottom: 16 },
-  lockedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 12, marginBottom: 8, opacity: 0.6 },
-  lockedBadgeText: { fontSize: 14, color: 'rgba(255,255,255,0.4)', marginLeft: 12 },
-  rewardsSection: { padding: 20 },
-  emptyState: { alignItems: 'center', paddingVertical: 60 },
-  emptyStateTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 16 },
-  emptyStateDescription: { fontSize: 14, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: 8, lineHeight: 20, maxWidth: 260 },
-  recordButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 24, marginTop: 24 },
-  recordButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
+
 });
 
 export default UserProfileScreen;

@@ -15,12 +15,12 @@ export const GameCarousel: React.FC<GameCarouselProps> = ({ navigation }) => {
             padding: 16,
         },
         gameCard: {
-            backgroundColor: theme === 'dark' ? '#2A2A2A' : '#FFFFFF',
+            backgroundColor: colors.card,
             borderRadius: 16,
             padding: 16,
             marginBottom: 16,
             borderWidth: 1,
-            borderColor: theme === 'dark' ? '#333' : '#E5E5E5',
+            borderColor: colors.border,
         },
         gameIcon: {
             width: 48,
@@ -56,7 +56,7 @@ export const GameCarousel: React.FC<GameCarouselProps> = ({ navigation }) => {
             color: colors.textSecondary,
             marginLeft: 4,
         },
-    }), [colors, theme]);
+    }), [colors]);
 
     return (
         <View style={styles.gamesContainer}>

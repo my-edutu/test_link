@@ -84,11 +84,11 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
           style={styles.modalBackground}
           onPress={() => setShowCreateModal(false)}
         />
-        <GlassCard intensity={40} style={styles.createModalContent}>
-          <Text style={styles.createModalTitle}>Create New</Text>
+        <GlassCard intensity={isDark ? 40 : 80} style={[styles.createModalContent, { backgroundColor: isDark ? undefined : colors.card }]}>
+          <Text style={[styles.createModalTitle, { color: colors.text }]}>Create New</Text>
 
           <TouchableOpacity
-            style={styles.createOption}
+            style={[styles.createOption, { borderBottomColor: colors.border }]}
             onPress={() => {
               setShowCreateModal(false);
               navigation.navigate('Groups');
@@ -98,13 +98,13 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
               <Ionicons name="people" size={20} color="#10B981" />
             </View>
             <View style={styles.createOptionText}>
-              <Text style={styles.createOptionTitle}>Create Group</Text>
-              <Text style={styles.createOptionDesc}>Start a language learning group</Text>
+              <Text style={[styles.createOptionTitle, { color: colors.text }]}>Create Group</Text>
+              <Text style={[styles.createOptionDesc, { color: colors.textSecondary }]}>Start a language learning group</Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.createOption}
+            style={[styles.createOption, { borderBottomColor: colors.border }]}
             onPress={() => {
               setShowCreateModal(false);
               navigation.navigate('CreateStory');
@@ -114,13 +114,13 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
               <Ionicons name="camera" size={20} color="#8B5CF6" />
             </View>
             <View style={styles.createOptionText}>
-              <Text style={styles.createOptionTitle}>Post Story</Text>
-              <Text style={styles.createOptionDesc}>Share your language journey</Text>
+              <Text style={[styles.createOptionTitle, { color: colors.text }]}>Post Story</Text>
+              <Text style={[styles.createOptionDesc, { color: colors.textSecondary }]}>Share your language journey</Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.createOption}
+            style={[styles.createOption, { borderBottomColor: 'transparent' }]}
             onPress={() => {
               setShowCreateModal(false);
               navigation.navigate('StartLive');
@@ -130,8 +130,8 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
               <Ionicons name="radio" size={20} color="#EF4444" />
             </View>
             <View style={styles.createOptionText}>
-              <Text style={styles.createOptionTitle}>Go Live</Text>
-              <Text style={styles.createOptionDesc}>Start live streaming or TurnVerse game</Text>
+              <Text style={[styles.createOptionTitle, { color: colors.text }]}>Go Live</Text>
+              <Text style={[styles.createOptionDesc, { color: colors.textSecondary }]}>Start live streaming or TurnVerse game</Text>
             </View>
           </TouchableOpacity>
         </GlassCard>
@@ -176,7 +176,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Messages</Text>
@@ -184,7 +184,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         </View>
 
         {/* Search */}
-        <View style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', borderColor: colors.border }]}>
+        <View style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.inputBackground, borderColor: colors.border }]}>
           <Ionicons name="search" size={18} color={colors.textSecondary} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -203,7 +203,7 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
               style={[
                 styles.segmentBtn,
                 { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
-                activeTab === tab && { backgroundColor: colors.primary }
+                activeTab === tab && { backgroundColor: Colors.primary }
               ]}
               onPress={() => handleTabPress(tab)}
             >
@@ -262,7 +262,10 @@ const ChatListScreen: React.FC<any> = ({ navigation }) => {
         {/* 2. Groups Tab */}
         <View style={styles.pageContainer}>
           <ScrollView style={styles.pageScroll} contentContainerStyle={styles.listContainer}>
-            <GlassCard style={styles.actionCard} intensity={25}>
+            <GlassCard
+              style={[styles.actionCard, { backgroundColor: isDark ? undefined : colors.card }]}
+              intensity={isDark ? 25 : 0}
+            >
               <TouchableOpacity style={styles.actionCardBody} onPress={() => navigation.navigate('Groups')}>
                 <View style={[styles.actionIcon, { backgroundColor: 'rgba(255,138,0,0.1)' }]}>
                   <Ionicons name="people" size={20} color={Colors.primary} />
@@ -368,7 +371,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -379,13 +381,11 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: Layout.radius.m,
     paddingHorizontal: 16,
     height: 48,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   searchInput: {
     flex: 1,
@@ -478,7 +478,6 @@ const styles = StyleSheet.create({
   },
   createModalTitle: {
     ...Typography.h2,
-    color: '#FFFFFF',
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -487,7 +486,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   createIconBox: {
     width: 44,
@@ -502,12 +500,10 @@ const styles = StyleSheet.create({
   },
   createOptionTitle: {
     ...Typography.h4,
-    color: '#FFFFFF',
   },
   createOptionDesc: {
     ...Typography.body,
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.4)',
     marginTop: 2,
   },
   // Action Card (Groups)
@@ -515,6 +511,11 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     borderRadius: Layout.radius.l,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   actionCardBody: {
     flexDirection: 'row',
@@ -531,12 +532,10 @@ const styles = StyleSheet.create({
   },
   actionTitle: {
     ...Typography.h4,
-    color: '#FFFFFF',
   },
   actionDesc: {
     ...Typography.body,
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.4)',
     marginTop: 2,
   },
 });

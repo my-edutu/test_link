@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAudioRecorder } from 'expo-audio';
 import { useAuth } from '../context/AuthProvider';
 import { uploadAudioFile } from '../utils/storage';
+import { useTheme } from '../context/ThemeContext';
 
 interface CommentInputProps {
   clipId: string;
@@ -31,6 +32,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
   isReply = false,
 }) => {
   const { user: authUser } = useAuth();
+  const { colors, isDark } = useTheme();
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -148,11 +150,19 @@ export const CommentInput: React.FC<CommentInputProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
       <View style={styles.inputContainer}>
         <TextInput
-          style={styles.textInput}
+          style={[
+            styles.textInput,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.border,
+              color: colors.text
+            }
+          ]}
           placeholder={placeholder}
+          placeholderTextColor={colors.textSecondary}
           value={comment}
           onChangeText={setComment}
           multiline
@@ -163,7 +173,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
         <View style={styles.actionButtons}>
           {!isRecording && !audioUrl && (
             <TouchableOpacity
-              style={styles.recordButton}
+              style={[styles.recordButton, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }]}
               onPress={startRecording}
               disabled={isSubmitting}
             >
@@ -173,7 +183,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
 
           {isRecording && (
             <TouchableOpacity
-              style={styles.stopButton}
+              style={[styles.stopButton, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2' }]}
               onPress={stopRecording}
             >
               <Ionicons name="stop" size={20} color="#EF4444" />
@@ -181,7 +191,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
           )}
 
           {audioUrl && (
-            <View style={styles.audioPreview}>
+            <View style={[styles.audioPreview, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#F0FDF4' }]}>
               <Ionicons name="play-circle" size={20} color="#10B981" />
               <Text style={styles.audioDuration}>
                 {audioDuration ? `${audioDuration}s` : 'Audio recorded'}
@@ -203,7 +213,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
                 onPress={handleCancel}
                 disabled={isSubmitting}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
             )}
 
@@ -236,9 +246,7 @@ export const CommentInput: React.FC<CommentInputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
     padding: 16,
   },
   inputContainer: {
@@ -249,13 +257,11 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
     maxHeight: 100,
-    backgroundColor: '#F9FAFB',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -266,7 +272,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -274,7 +279,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FEF2F2',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -284,7 +288,6 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#F0FDF4',
     borderRadius: 12,
   },
   audioDuration: {
@@ -306,7 +309,6 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontSize: 14,
-    color: '#6B7280',
     fontWeight: '500',
   },
   submitButton: {

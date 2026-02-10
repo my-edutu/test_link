@@ -34,6 +34,7 @@ const LeaderboardScreen = () => {
     const navigation = useNavigation();
     const { user } = useAuth();
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
     const [selectedTimeframe, setSelectedTimeframe] = useState<'Daily' | 'Weekly' | 'Monthly' | 'All Time'>('All Time');
     const [leaderboard, setLeaderboard] = useState<Contributor[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +78,8 @@ const LeaderboardScreen = () => {
             intensity={contributor.isCurrentUser ? 40 : 20}
             style={[
                 styles.contributorCard,
-                contributor.isCurrentUser && styles.currentUserCard
+                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.card },
+                contributor.isCurrentUser && { borderColor: Colors.primary, borderWidth: 1 }
             ]}
         >
             <View style={styles.contributorRank}>
@@ -88,12 +90,13 @@ const LeaderboardScreen = () => {
                 ) : (
                     <Text style={[
                         styles.rankNumber,
-                        contributor.isCurrentUser && styles.currentUserText
+                        { color: isDark ? 'rgba(255, 255, 255, 0.5)' : colors.textSecondary },
+                        contributor.isCurrentUser && { color: Colors.primary }
                     ]}>{contributor.rank}</Text>
                 )}
             </View>
 
-            <View style={styles.contributorAvatar}>
+            <View style={[styles.contributorAvatar, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
                 <Text style={styles.avatarText}>{contributor.avatar}</Text>
             </View>
 
@@ -101,40 +104,45 @@ const LeaderboardScreen = () => {
                 <View style={styles.nameRow}>
                     <Text style={[
                         styles.contributorName,
-                        contributor.isCurrentUser && styles.currentUserText
+                        { color: colors.text },
+                        contributor.isCurrentUser && { color: Colors.primary }
                     ]}>
                         {contributor.name}
                     </Text>
                     {contributor.isCurrentUser && (
-                        <View style={styles.youBadge}>
+                        <View style={[styles.youBadge, { backgroundColor: Colors.primary }]}>
                             <Text style={styles.youBadgeText}>YOU</Text>
                         </View>
                     )}
                 </View>
-                <Text style={styles.contributorUsername}>@{contributor.username}</Text>
+                <Text style={[styles.contributorUsername, { color: colors.textSecondary }]}>@{contributor.username}</Text>
             </View>
 
             <View style={styles.contributorPoints}>
                 <Text style={[
                     styles.pointsNumber,
-                    contributor.isCurrentUser && styles.currentUserPoints
+                    { color: colors.text },
+                    contributor.isCurrentUser && { color: Colors.primary }
                 ]}>${contributor.points.toLocaleString()}</Text>
-                <Text style={styles.pointsLabel}>USD</Text>
+                <Text style={[styles.pointsLabel, { color: colors.textSecondary }]}>USD</Text>
             </View>
         </GlassCard>
     );
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="light-content" />
-            <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+            {isDark && <LinearGradient colors={['#1F0800', '#0D0200']} style={StyleSheet.absoluteFill} />}
 
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+                <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}
+                >
+                    <Ionicons name="arrow-back" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Leaderboard</Text>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Leaderboard</Text>
                 <View style={{ width: 40 }} />
             </View>
 
@@ -150,13 +158,18 @@ const LeaderboardScreen = () => {
                             key={timeframe}
                             style={[
                                 styles.timeframeButton,
-                                selectedTimeframe === timeframe && styles.timeframeButtonActive
+                                {
+                                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                selectedTimeframe === timeframe && { backgroundColor: Colors.primary, borderColor: Colors.primary }
                             ]}
                             onPress={() => setSelectedTimeframe(timeframe as typeof selectedTimeframe)}
                         >
                             <Text style={[
                                 styles.timeframeButtonText,
-                                selectedTimeframe === timeframe && styles.timeframeButtonTextActive
+                                { color: isDark ? 'rgba(255, 255, 255, 0.6)' : colors.textSecondary },
+                                selectedTimeframe === timeframe && { color: '#FFFFFF' }
                             ]}>
                                 {timeframe}
                             </Text>
@@ -169,6 +182,7 @@ const LeaderboardScreen = () => {
                     {leaderboard.slice(0, 3).map((contributor, index) => (
                         <View key={contributor.id} style={[
                             styles.topContributorCard,
+                            { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.card },
                             index === 0 && styles.firstPlace,
                             index === 1 && styles.secondPlace,
                             index === 2 && styles.thirdPlace,
@@ -176,21 +190,21 @@ const LeaderboardScreen = () => {
                             <Text style={styles.topRankEmoji}>
                                 {index === 0 ? '👑' : index === 1 ? '🥈' : '🥉'}
                             </Text>
-                            <View style={styles.topAvatar}>
+                            <View style={[styles.topAvatar, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
                                 <Text style={styles.topAvatarText}>{contributor.avatar}</Text>
                             </View>
-                            <Text style={styles.topContributorName}>{contributor.name}</Text>
+                            <Text style={[styles.topContributorName, { color: colors.text }]}>{contributor.name}</Text>
                             <Text style={styles.topContributorPoints}>
                                 {contributor.points.toLocaleString()}
                             </Text>
-                            <Text style={styles.topContributorBadge}>{contributor.badge}</Text>
+                            <Text style={[styles.topContributorBadge, { color: colors.textSecondary }]}>{contributor.badge}</Text>
                         </View>
                     ))}
                 </View>
 
                 {/* All Contributors List */}
                 <View style={styles.allContributorsSection}>
-                    <Text style={styles.sectionTitle}>Full Leaderboard</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Full Leaderboard</Text>
                     {leaderboard.map(renderContributor)}
                 </View>
             </ScrollView>
@@ -201,7 +215,6 @@ const LeaderboardScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#1A0800',
     },
     header: {
         flexDirection: 'row',
@@ -214,13 +227,11 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     headerTitle: {
         ...Typography.h2,
-        color: '#FFFFFF',
     },
     content: {
         paddingBottom: 40,
@@ -235,22 +246,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         marginRight: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    timeframeButtonActive: {
-        backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
     },
     timeframeButtonText: {
         ...Typography.caption,
         fontWeight: '600',
-        color: 'rgba(255, 255, 255, 0.6)',
-    },
-    timeframeButtonTextActive: {
-        color: '#FFFFFF',
     },
     topThreeContainer: {
         flexDirection: 'row',
@@ -264,9 +265,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderRadius: 16,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         width: '30%',
         marginHorizontal: '1.5%',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
     firstPlace: {
         height: 200,
@@ -295,7 +300,6 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8,
@@ -306,7 +310,6 @@ const styles = StyleSheet.create({
     topContributorName: {
         ...Typography.caption,
         fontWeight: '700',
-        color: '#FFFFFF',
         marginBottom: 4,
         textAlign: 'center',
     },
@@ -318,7 +321,6 @@ const styles = StyleSheet.create({
     },
     topContributorBadge: {
         fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.5)',
         textTransform: 'uppercase',
     },
     allContributorsSection: {
@@ -326,7 +328,6 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         ...Typography.h3,
-        color: '#FFFFFF',
         marginBottom: 16,
     },
     contributorCard: {
@@ -336,10 +337,6 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         marginBottom: 12,
     },
-    currentUserCard: {
-        borderColor: Colors.primary,
-        borderWidth: 1,
-    },
     contributorRank: {
         width: 32,
         alignItems: 'center',
@@ -347,7 +344,6 @@ const styles = StyleSheet.create({
     },
     rankNumber: {
         ...Typography.h3,
-        color: 'rgba(255, 255, 255, 0.5)',
     },
     rankEmoji: {
         fontSize: 20,
@@ -356,7 +352,6 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 16,
@@ -375,14 +370,9 @@ const styles = StyleSheet.create({
     contributorName: {
         ...Typography.body,
         fontWeight: '600',
-        color: '#FFFFFF',
         marginRight: 8,
     },
-    currentUserText: {
-        color: Colors.primary,
-    },
     youBadge: {
-        backgroundColor: Colors.primary,
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 4,
@@ -394,7 +384,6 @@ const styles = StyleSheet.create({
     },
     contributorUsername: {
         ...Typography.caption,
-        color: 'rgba(255, 255, 255, 0.5)',
     },
     contributorPoints: {
         alignItems: 'flex-end',
@@ -402,14 +391,9 @@ const styles = StyleSheet.create({
     pointsNumber: {
         ...Typography.body,
         fontWeight: '700',
-        color: '#FFFFFF',
-    },
-    currentUserPoints: {
-        color: Colors.primary,
     },
     pointsLabel: {
         fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.5)',
         textTransform: 'uppercase',
     },
 });

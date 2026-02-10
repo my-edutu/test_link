@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     avatarText: {
         fontSize: 22,
         fontWeight: 'bold',
-        color: 'rgba(255, 255, 255, 0.5)',
+        color: Colors.textSecondary,
     },
     onlineIndicator: {
         position: 'absolute',
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
         borderRadius: 7,
         backgroundColor: '#10B981',
         borderWidth: 2,
-        borderColor: '#1A0800',
+        borderColor: '#1A0800', // Consider using colors.background if available in scope, otherwise leave as is or pass colors prop
     },
     chatItemCenter: {
         flex: 1,
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     },
     contactName: {
         ...Typography.h4,
-        color: '#FFFFFF',
+        color: Colors.text, // Use global Colors.text if accessible, or better yet, use context colors.
         flex: 1,
     },
     languageTag: {
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     lastMessage: {
         ...Typography.body,
         fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.5)',
+        color: Colors.textSecondary,
     },
     translatedMessage: {
         ...Typography.body,
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     lastMessageTime: {
         ...Typography.body,
         fontSize: 12,
-        color: 'rgba(255, 255, 255, 0.3)',
+        color: Colors.textMuted,
         marginBottom: 8,
     },
     rightActions: {

@@ -24,9 +24,11 @@ import {
     BalanceSummary,
     BankResolveResult
 } from '../types/monetization.types';
+import { useTheme } from '../context/ThemeContext';
 
 const WithdrawalScreen: React.FC = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
 
     // State
     const [banks, setBanks] = useState<BankItem[]>([]);
@@ -176,39 +178,39 @@ const WithdrawalScreen: React.FC = () => {
     };
 
     const renderBankStep = () => (
-        <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Enter Bank Details</Text>
-            <Text style={styles.stepDescription}>
+        <View style={[styles.stepContainer, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : '#000' }]}>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>Enter Bank Details</Text>
+            <Text style={[styles.stepDescription, { color: colors.textSecondary }]}>
                 Select your bank and enter your account number
             </Text>
 
             {linkedBank && linkedBank.bankCode && (
-                <View style={styles.linkedBankCard}>
+                <View style={[styles.linkedBankCard, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ECFDF5' }]}>
                     <View style={styles.linkedBankHeader}>
                         <Ionicons name="card" size={20} color="#10B981" />
                         <Text style={styles.linkedBankTitle}>Saved Bank Account</Text>
                     </View>
-                    <Text style={styles.linkedBankName}>{linkedBank.accountName}</Text>
-                    <Text style={styles.linkedBankDetails}>
+                    <Text style={[styles.linkedBankName, { color: colors.text }]}>{linkedBank.accountName}</Text>
+                    <Text style={[styles.linkedBankDetails, { color: colors.textSecondary }]}>
                         {linkedBank.bankName} - ****{linkedBank.accountNumberLast4}
                     </Text>
                 </View>
             )}
 
             <TouchableOpacity
-                style={styles.bankSelector}
+                style={[styles.bankSelector, { backgroundColor: colors.inputBackground }]}
                 onPress={() => setShowBankPicker(true)}
             >
-                <Text style={selectedBank ? styles.bankSelectorText : styles.bankSelectorPlaceholder}>
+                <Text style={selectedBank ? [styles.bankSelectorText, { color: colors.text }] : [styles.bankSelectorPlaceholder, { color: colors.textMuted }]}>
                     {selectedBank ? selectedBank.name : 'Select Bank'}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color="#6B7280" />
+                <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
             <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text }]}
                 placeholder="Account Number (10 digits)"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.textMuted}
                 keyboardType="number-pad"
                 maxLength={10}
                 value={accountNumber}
@@ -218,6 +220,7 @@ const WithdrawalScreen: React.FC = () => {
             <TouchableOpacity
                 style={[
                     styles.primaryButton,
+                    { backgroundColor: colors.primary },
                     (!selectedBank || accountNumber.length !== 10) && styles.buttonDisabled,
                 ]}
                 onPress={() => {
@@ -236,15 +239,15 @@ const WithdrawalScreen: React.FC = () => {
     );
 
     const renderAmountStep = () => (
-        <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Enter Amount</Text>
+        <View style={[styles.stepContainer, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : '#000' }]}>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>Enter Amount</Text>
 
             {resolvedAccount && (
-                <View style={styles.verifiedCard}>
+                <View style={[styles.verifiedCard, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ECFDF5' }]}>
                     <Ionicons name="checkmark-circle" size={24} color="#10B981" />
                     <View style={styles.verifiedInfo}>
-                        <Text style={styles.verifiedName}>{resolvedAccount.accountName}</Text>
-                        <Text style={styles.verifiedBank}>
+                        <Text style={[styles.verifiedName, { color: colors.text }]}>{resolvedAccount.accountName}</Text>
+                        <Text style={[styles.verifiedBank, { color: colors.textSecondary }]}>
                             {resolvedAccount.bankName} - {resolvedAccount.accountNumber}
                         </Text>
                     </View>
@@ -256,9 +259,9 @@ const WithdrawalScreen: React.FC = () => {
                 </View>
             )}
 
-            <View style={styles.balanceCard}>
-                <Text style={styles.balanceLabel}>Available Balance</Text>
-                <Text style={styles.balanceAmount}>
+            <View style={[styles.balanceCard, { backgroundColor: colors.inputBackground }]}>
+                <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>Available Balance</Text>
+                <Text style={[styles.balanceAmount, { color: colors.text }]}>
                     ${balance?.availableBalance.toFixed(2) || '0.00'}
                 </Text>
                 {balance && balance.pendingBalance > 0 && (
@@ -268,12 +271,12 @@ const WithdrawalScreen: React.FC = () => {
                 )}
             </View>
 
-            <View style={styles.amountInputContainer}>
-                <Text style={styles.currencySymbol}>$</Text>
+            <View style={[styles.amountInputContainer, { backgroundColor: colors.inputBackground }]}>
+                <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
                 <TextInput
-                    style={styles.amountInput}
+                    style={[styles.amountInput, { color: colors.text }]}
                     placeholder="0.00"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.textMuted}
                     keyboardType="decimal-pad"
                     value={amount}
                     onChangeText={setAmount}
@@ -282,15 +285,16 @@ const WithdrawalScreen: React.FC = () => {
 
             <View style={styles.buttonRow}>
                 <TouchableOpacity
-                    style={styles.secondaryButton}
+                    style={[styles.secondaryButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}
                     onPress={() => setStep('bank')}
                 >
-                    <Text style={styles.secondaryButtonText}>Back</Text>
+                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[
                         styles.primaryButton,
                         styles.flexButton,
+                        { backgroundColor: colors.primary },
                         (!amount || parseFloat(amount) < 5) && styles.buttonDisabled,
                     ]}
                     onPress={() => {
@@ -306,48 +310,48 @@ const WithdrawalScreen: React.FC = () => {
     );
 
     const renderConfirmStep = () => (
-        <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Confirm Withdrawal</Text>
-            <Text style={styles.minWithdrawal}>Minimum withdrawal: $5.00</Text>
+        <View style={[styles.stepContainer, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : '#000' }]}>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>Confirm Withdrawal</Text>
+            <Text style={[styles.minWithdrawal, { color: colors.textMuted }]}>Minimum withdrawal: $5.00</Text>
 
-            <View style={styles.summaryCard}>
+            <View style={[styles.summaryCard, { backgroundColor: colors.inputBackground }]}>
                 <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Amount</Text>
-                    <Text style={styles.summaryValue}>${parseFloat(amount).toFixed(2)}</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Amount</Text>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>${parseFloat(amount).toFixed(2)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Bank</Text>
-                    <Text style={styles.summaryValue}>{resolvedAccount?.bankName}</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Bank</Text>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>{resolvedAccount?.bankName}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Account</Text>
-                    <Text style={styles.summaryValue}>{resolvedAccount?.accountNumber}</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Account</Text>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>{resolvedAccount?.accountNumber}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Account Name</Text>
-                    <Text style={styles.summaryValue}>{resolvedAccount?.accountName}</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Account Name</Text>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>{resolvedAccount?.accountName}</Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
                 <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>You will receive</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>You will receive</Text>
                     <Text style={styles.summaryTotal}>${parseFloat(amount).toFixed(2)}</Text>
                 </View>
             </View>
 
-            <Text style={styles.disclaimer}>
+            <Text style={[styles.disclaimer, { color: colors.textMuted }]}>
                 By confirming, your funds will be sent to the account above.
                 Payment comes in 24 hours (1 working day).
             </Text>
 
             <View style={styles.buttonRow}>
                 <TouchableOpacity
-                    style={styles.secondaryButton}
+                    style={[styles.secondaryButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}
                     onPress={() => setStep('amount')}
                 >
-                    <Text style={styles.secondaryButtonText}>Back</Text>
+                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={[styles.primaryButton, styles.flexButton]}
+                    style={[styles.primaryButton, styles.flexButton, { backgroundColor: colors.primary }]}
                     onPress={submitWithdrawal}
                     disabled={submitting}
                 >
@@ -362,27 +366,27 @@ const WithdrawalScreen: React.FC = () => {
     );
 
     const renderBankPicker = () => (
-        <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                    <Text style={styles.pickerTitle}>Select Bank</Text>
+        <View style={[styles.pickerOverlay, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.pickerContainer, { backgroundColor: colors.card }]}>
+                <View style={[styles.pickerHeader, { borderBottomColor: colors.border }]}>
+                    <Text style={[styles.pickerTitle, { color: colors.text }]}>Select Bank</Text>
                     <TouchableOpacity onPress={() => setShowBankPicker(false)}>
-                        <Ionicons name="close" size={24} color="#1F2937" />
+                        <Ionicons name="close" size={24} color={colors.text} />
                     </TouchableOpacity>
                 </View>
                 <ScrollView style={styles.bankList}>
                     {banks.map((bank, index) => (
                         <TouchableOpacity
                             key={`${bank.code}-${index}`}
-                            style={styles.bankItem}
+                            style={[styles.bankItem, { borderBottomColor: colors.border }]}
                             onPress={() => {
                                 setSelectedBank(bank);
                                 setShowBankPicker(false);
                             }}
                         >
-                            <Text style={styles.bankItemText}>{bank.name}</Text>
+                            <Text style={[styles.bankItemText, { color: colors.text }]}>{bank.name}</Text>
                             {selectedBank?.code === bank.code && (
-                                <Ionicons name="checkmark" size={20} color="#FF8A00" />
+                                <Ionicons name="checkmark" size={20} color={colors.primary} />
                             )}
                         </TouchableOpacity>
                     ))}
@@ -393,7 +397,7 @@ const WithdrawalScreen: React.FC = () => {
 
     if (loadingBanks || loadingBalance) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={styles.loadingContainer}>
                     <NewtonCradleLoader />
                 </View>
@@ -402,31 +406,31 @@ const WithdrawalScreen: React.FC = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.keyboardAvoid}
             >
-                <View style={[styles.header, { paddingTop: 10 }]}>
+                <View style={[styles.header, { backgroundColor: colors.card, paddingTop: 10 }]}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        <Ionicons name="arrow-back" size={24} color="#1F2937" />
-                        <Text style={styles.headerTitle}>Withdraw Funds</Text>
+                        <Ionicons name="arrow-back" size={24} color={colors.text} />
+                        <Text style={[styles.headerTitle, { color: colors.text }]}>Withdraw Funds</Text>
                     </TouchableOpacity>
                 </View>
 
                 <ScrollView
                     style={styles.content}
                     refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.text} />
                     }
                 >
                     {/* Progress indicator */}
                     <View style={styles.progressContainer}>
-                        <View style={[styles.progressDot, step === 'bank' && styles.progressDotActive]} />
-                        <View style={styles.progressLine} />
-                        <View style={[styles.progressDot, step === 'amount' && styles.progressDotActive]} />
-                        <View style={styles.progressLine} />
-                        <View style={[styles.progressDot, step === 'confirm' && styles.progressDotActive]} />
+                        <View style={[styles.progressDot, { backgroundColor: colors.border }, step === 'bank' && { backgroundColor: colors.primary }]} />
+                        <View style={[styles.progressLine, { backgroundColor: colors.border }]} />
+                        <View style={[styles.progressDot, { backgroundColor: colors.border }, step === 'amount' && { backgroundColor: colors.primary }]} />
+                        <View style={[styles.progressLine, { backgroundColor: colors.border }]} />
+                        <View style={[styles.progressDot, { backgroundColor: colors.border }, step === 'confirm' && { backgroundColor: colors.primary }]} />
                     </View>
 
                     {step === 'bank' && renderBankStep()}
@@ -443,7 +447,6 @@ const WithdrawalScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F9FAFB',
     },
     keyboardAvoid: {
         flex: 1,
@@ -456,7 +459,6 @@ const styles = StyleSheet.create({
     header: {
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#FFF',
     },
     backButton: {
         flexDirection: 'row',
@@ -465,7 +467,6 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: '800',
-        color: '#1F2937',
         marginLeft: 12,
     },
     content: {
@@ -482,22 +483,15 @@ const styles = StyleSheet.create({
         width: 12,
         height: 12,
         borderRadius: 6,
-        backgroundColor: '#E5E7EB',
-    },
-    progressDotActive: {
-        backgroundColor: '#FF8A00',
     },
     progressLine: {
         width: 40,
         height: 2,
-        backgroundColor: '#E5E7EB',
         marginHorizontal: 8,
     },
     stepContainer: {
-        backgroundColor: '#FFF',
         borderRadius: 16,
         padding: 20,
-        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
         shadowRadius: 8,
@@ -506,16 +500,13 @@ const styles = StyleSheet.create({
     stepTitle: {
         fontSize: 20,
         fontWeight: '600',
-        color: '#1F2937',
         marginBottom: 8,
     },
     stepDescription: {
         fontSize: 14,
-        color: '#6B7280',
         marginBottom: 20,
     },
     linkedBankCard: {
-        backgroundColor: '#ECFDF5',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
@@ -534,40 +525,32 @@ const styles = StyleSheet.create({
     linkedBankName: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#1F2937',
     },
     linkedBankDetails: {
         fontSize: 14,
-        color: '#6B7280',
         marginTop: 4,
     },
     bankSelector: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         padding: 16,
         marginBottom: 12,
     },
     bankSelectorText: {
         fontSize: 16,
-        color: '#1F2937',
     },
     bankSelectorPlaceholder: {
         fontSize: 16,
-        color: '#9CA3AF',
     },
     input: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         padding: 16,
         fontSize: 16,
-        color: '#1F2937',
         marginBottom: 16,
     },
     primaryButton: {
-        backgroundColor: '#FF8A00',
         borderRadius: 12,
         padding: 16,
         alignItems: 'center',
@@ -578,17 +561,15 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     buttonDisabled: {
-        backgroundColor: '#D1D5DB',
+        opacity: 0.5,
     },
     secondaryButton: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         padding: 16,
         alignItems: 'center',
         minWidth: 100,
     },
     secondaryButtonText: {
-        color: '#6B7280',
         fontSize: 16,
         fontWeight: '600',
     },
@@ -603,7 +584,6 @@ const styles = StyleSheet.create({
     verifiedCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ECFDF5',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
@@ -615,11 +595,9 @@ const styles = StyleSheet.create({
     verifiedName: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#1F2937',
     },
     verifiedBank: {
         fontSize: 14,
-        color: '#6B7280',
         marginTop: 2,
     },
     linkText: {
@@ -627,7 +605,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     balanceCard: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
@@ -635,12 +612,10 @@ const styles = StyleSheet.create({
     },
     balanceLabel: {
         fontSize: 14,
-        color: '#6B7280',
     },
     balanceAmount: {
         fontSize: 32,
         fontWeight: '700',
-        color: '#1F2937',
         marginTop: 4,
     },
     pendingBalance: {
@@ -651,7 +626,6 @@ const styles = StyleSheet.create({
     amountInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         paddingHorizontal: 16,
         marginBottom: 8,
@@ -659,23 +633,19 @@ const styles = StyleSheet.create({
     currencySymbol: {
         fontSize: 24,
         fontWeight: '600',
-        color: '#6B7280',
     },
     amountInput: {
         flex: 1,
         fontSize: 24,
         fontWeight: '600',
-        color: '#1F2937',
         padding: 16,
     },
     minWithdrawal: {
         fontSize: 12,
-        color: '#9CA3AF',
         marginBottom: 16,
         textAlign: 'center',
     },
     summaryCard: {
-        backgroundColor: '#F3F4F6',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
@@ -687,12 +657,10 @@ const styles = StyleSheet.create({
     },
     summaryLabel: {
         fontSize: 14,
-        color: '#6B7280',
     },
     summaryValue: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#1F2937',
     },
     summaryTotal: {
         fontSize: 18,
@@ -701,12 +669,10 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: 1,
-        backgroundColor: '#E5E7EB',
         marginVertical: 12,
     },
     disclaimer: {
         fontSize: 12,
-        color: '#9CA3AF',
         textAlign: 'center',
         lineHeight: 18,
     },
@@ -716,11 +682,9 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     pickerContainer: {
-        backgroundColor: '#FFF',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: '70%',
@@ -731,12 +695,10 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
     },
     pickerTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#1F2937',
     },
     bankList: {
         padding: 16,
@@ -747,11 +709,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
     },
     bankItemText: {
         fontSize: 16,
-        color: '#1F2937',
     },
 });
 

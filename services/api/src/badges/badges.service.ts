@@ -33,7 +33,7 @@ export class BadgesService {
 
     constructor(
         @Inject('DRIZZLE') private db: PostgresJsDatabase<typeof schema>,
-    ) {}
+    ) { }
 
     /**
      * Get all available badges in the system.
@@ -240,6 +240,18 @@ export class BadgesService {
             .select({ count: count() })
             .from(schema.validations)
             .where(eq(schema.validations.validatorId, userId));
+
+        return result?.count ?? 0;
+    }
+
+    /**
+     * Get count of followers for a user.
+     */
+    async getFollowersCount(userId: string): Promise<number> {
+        const [result] = await this.db
+            .select({ count: count() })
+            .from(schema.followers)
+            .where(eq(schema.followers.followingId, userId));
 
         return result?.count ?? 0;
     }

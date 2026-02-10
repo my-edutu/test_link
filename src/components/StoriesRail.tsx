@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { Colors } from '../constants/Theme';
 import { useAuth } from '../context/AuthProvider';
+import { useTheme } from '../context/ThemeContext';
 
 // Hexagon-like shape or just a unique border radius
 const STORY_SIZE = 70;
@@ -15,6 +16,8 @@ interface Story {
     avatar_url: string;
     has_unseen: boolean;
     is_me?: boolean;
+    media_url?: string; // New: For showing latest story preview
+    thumbnail_url?: string; // New: For video thumbnails
 }
 
 interface StoriesRailProps {
@@ -25,6 +28,7 @@ interface StoriesRailProps {
 export const StoriesRail: React.FC<StoriesRailProps> = ({ stories, currentUserStory }) => {
     const navigation = useNavigation<any>();
     const { user } = useAuth();
+    const { colors, isDark } = useTheme();
 
     // "My Story" item configuration
     const myStoryItem = currentUserStory ? {
@@ -47,85 +51,99 @@ export const StoriesRail: React.FC<StoriesRailProps> = ({ stories, currentUserSt
     const allStories = [myStoryItem, ...otherStories];
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
             >
-                {allStories.map((story, index) => (
-                    <TouchableOpacity
-                        key={story.id}
-                        style={styles.storyItem}
-                        onPress={() => {
-                            if (story.is_me) {
-                                if (currentUserStory) {
-                                    navigation.navigate('StoryView', { story: currentUserStory });
+                {allStories.map((story, index) => {
+                    // Determine what image to show:
+                    // 1. If active story (me or other) -> Show media_url/thumbnail if available
+                    // 2. Fallback -> Show avatar_url
+                    const showMediaPreview = (story.is_me && currentUserStory) || (!story.is_me && story.has_unseen);
+                    const imageSource = showMediaPreview && (story.media_url || story.thumbnail_url)
+                        ? { uri: story.media_url || story.thumbnail_url }
+                        : { uri: story.avatar_url || 'https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/www/public/avatars/01.png' };
+
+                    // Fallback for empty avatar if not viewing media
+                    const hasAvatar = !!story.avatar_url;
+
+                    return (
+                        <TouchableOpacity
+                            key={story.id}
+                            style={styles.storyItem}
+                            onPress={() => {
+                                if (story.is_me) {
+                                    if (currentUserStory) {
+                                        navigation.navigate('StoryView', { story: currentUserStory });
+                                    } else {
+                                        navigation.navigate('CreateStory');
+                                    }
                                 } else {
-                                    navigation.navigate('CreateStory');
+                                    navigation.navigate('StoryView', { story: story });
                                 }
-                            } else {
-                                navigation.navigate('StoryView', { story: story });
-                            }
-                        }}
-                    >
-                        <View style={styles.avatarContainer}>
-                            {/* Unique: Hexagonal-ish Gradient Border for Unseen */}
-                            {(story.is_me && !currentUserStory) ? (
-                                // No active story -> Show placeholder style with +
-                                <View style={[styles.gradientBorder, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                                    <View style={styles.avatarInner}>
-                                        {story.avatar_url ? (
-                                            <Image
-                                                source={{ uri: story.avatar_url }}
-                                                style={styles.avatar}
-                                            />
-                                        ) : (
-                                            <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}>
-                                                <Text style={{ color: '#FFF', fontSize: 24, fontWeight: 'bold' }}>
-                                                    {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                    <View style={styles.plusBadge}>
-                                        <Text style={styles.plusText}>+</Text>
-                                    </View>
-                                </View>
-                            ) : (
-                                // Active story or other user story
-                                story.has_unseen ? (
-                                    <LinearGradient
-                                        colors={['#FF8A00', '#D946EF', '#8B5CF6']}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 1 }}
-                                        style={styles.gradientBorder}
-                                    >
-                                        <View style={styles.avatarInner}>
-                                            <Image
-                                                source={{ uri: story.avatar_url || 'https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/www/public/avatars/01.png' }}
-                                                style={styles.avatar}
-                                            />
+                            }}
+                        >
+                            <View style={styles.avatarContainer}>
+                                {/* Case 1: My Story - No active story -> Show Add Button style */}
+                                {(story.is_me && !currentUserStory) ? (
+                                    <View style={[styles.gradientBorder, { backgroundColor: colors.card }]}>
+                                        <View style={[styles.avatarInner, { borderColor: colors.background, backgroundColor: colors.background }]}>
+                                            {hasAvatar ? (
+                                                <Image
+                                                    source={{ uri: story.avatar_url }}
+                                                    style={styles.avatar}
+                                                />
+                                            ) : (
+                                                <View style={[styles.avatar, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                                                    <Text style={{ color: colors.text, fontSize: 24, fontWeight: 'bold' }}>
+                                                        {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
+                                                    </Text>
+                                                </View>
+                                            )}
                                         </View>
-                                    </LinearGradient>
+                                        <View style={[styles.plusBadge, { borderColor: colors.background }]}>
+                                            <Text style={styles.plusText}>+</Text>
+                                        </View>
+                                    </View>
                                 ) : (
-                                    // Seen story
-                                    <View style={[styles.gradientBorder, { backgroundColor: 'rgba(255,255,255,0.1)', padding: 2 }]}>
-                                        <View style={[styles.avatarInner, { borderColor: 'rgba(255,255,255,0.2)' }]}>
-                                            <Image
-                                                source={{ uri: story.avatar_url || 'https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/www/public/avatars/01.png' }}
-                                                style={styles.avatar}
-                                            />
+                                    // Case 2: Active Story (Me or Others)
+                                    story.has_unseen || (story.is_me && currentUserStory) ? (
+                                        <LinearGradient
+                                            colors={['#FF8A00', '#D946EF', '#8B5CF6']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 1 }}
+                                            style={styles.gradientBorder}
+                                        >
+                                            <View style={[styles.avatarInner, { borderColor: colors.background, backgroundColor: colors.background }]}>
+                                                <Image
+                                                    source={imageSource}
+                                                    style={styles.avatar}
+                                                    resizeMode="cover"
+                                                />
+                                            </View>
+                                        </LinearGradient>
+                                    ) : (
+                                        // Case 3: Seen Story
+                                        <View style={[styles.gradientBorder, { backgroundColor: colors.border, padding: 2 }]}>
+                                            <View style={[styles.avatarInner, { borderColor: colors.background, backgroundColor: colors.background }]}>
+                                                <Image
+                                                    source={imageSource}
+                                                    style={styles.avatar}
+                                                    resizeMode="cover"
+                                                />
+                                            </View>
                                         </View>
-                                    </View>
-                                )
-                            )}
-                        </View>
-                        <Text style={styles.username} numberOfLines={1}>
-                            {story.is_me ? 'Your Story' : story.username}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+                                    )
+                                )}
+                            </View>
+                            <Text style={[styles.username, { color: colors.text }]} numberOfLines={1}>
+                                {story.is_me ? 'Your Story' : story.username}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
             </ScrollView>
         </View>
     );
@@ -134,9 +152,7 @@ export const StoriesRail: React.FC<StoriesRailProps> = ({ stories, currentUserSt
 const styles = StyleSheet.create({
     container: {
         paddingVertical: 12,
-        // Add a separator line at the bottom
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
         marginBottom: 10,
     },
     scrollContent: {
@@ -165,18 +181,15 @@ const styles = StyleSheet.create({
     avatarInner: {
         width: '100%',
         height: '100%', // Fill the gradient container minus padding
-        backgroundColor: '#000', // Matches background to create "border" effect
         borderRadius: 22, // Slightly smaller than outer
         overflow: 'hidden',
         borderWidth: 2,
-        borderColor: '#1F0800', // Match parent background color
     },
     avatar: {
         width: '100%',
         height: '100%',
     },
     username: {
-        color: '#FFF',
         fontSize: 11,
         fontWeight: '500',
         textAlign: 'center',
@@ -192,7 +205,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#1F0800',
     },
     plusText: {
         color: '#FFF',

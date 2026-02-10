@@ -16,6 +16,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../database/schema';
 import { JwtAuthGuard, AdminGuard, CurrentUser, AuthUser } from '../auth';
 import { IsString, IsNumber, IsBoolean, IsOptional, Min } from 'class-validator';
+import { NotificationService } from '../notifications/notification.service';
 
 /**
  * Validated DTO for creating reward rates
@@ -55,6 +56,21 @@ class UpdateRewardRateDto {
     isActive?: boolean;
 }
 
+class BroadcastNotificationDto {
+    @IsString()
+    title: string;
+
+    @IsString()
+    body: string;
+
+    @IsOptional()
+    @IsString()
+    category?: 'alert' | 'social' | 'reward';
+
+    @IsOptional()
+    data?: Record<string, unknown>;
+}
+
 /**
  * Admin Controller
  * Handles admin-only operations for monetization management.
@@ -67,6 +83,7 @@ export class AdminController {
 
     constructor(
         @Inject('DRIZZLE') private db: PostgresJsDatabase<typeof schema>,
+        private notificationService: NotificationService,
     ) { }
 
     /**
@@ -75,7 +92,7 @@ export class AdminController {
      */
     @Get('rates')
     async getRewardRates(@CurrentUser() user: AuthUser) {
-        this.logger.log(`Admin ${user.id} fetching reward rates`);
+        this.logger.debug(`Admin ${user.id} fetching reward rates`);
 
         const rates = await this.db
             .select()
@@ -140,7 +157,7 @@ export class AdminController {
      */
     @Get('stats')
     async getDashboardStats(@CurrentUser() user: AuthUser) {
-        this.logger.log(`Admin ${user.id} fetching dashboard stats`);
+        this.logger.debug(`Admin ${user.id} fetching dashboard stats`);
 
         // Get totals from database
         const [profileStats] = await this.db.execute<any>(sql`
@@ -226,5 +243,71 @@ export class AdminController {
 
         this.logger.log(`Default reward rates seeded by ${user.id}`);
         return { success: true, message: 'Default rates seeded' };
+    }
+
+    /**
+     * Send a notification to a specific user.
+     * POST /admin/notifications/user/:id
+     */
+    @Post('notifications/user/:id')
+    async sendNotificationToUser(
+        @Param('id') userId: string,
+        @CurrentUser() admin: AuthUser,
+        @Body() dto: BroadcastNotificationDto,
+    ) {
+        this.logger.log(`Admin ${admin.id} sending notification to user ${userId}`);
+
+        const success = await this.notificationService.sendToUser({
+            userId,
+            title: dto.title,
+            body: dto.body,
+            category: dto.category || 'alert',
+            data: dto.data,
+        });
+
+        if (!success) {
+            return { success: false, message: 'Failed to send notification. User might not have a push token.' };
+        }
+
+        return { success: true, message: 'Notification sent' };
+    }
+
+    /**
+     * Broadcast a notification to ALL users.
+     * POST /admin/notifications/broadcast
+     * Warning: This can be expensive and slow for large user bases.
+     */
+    @Post('notifications/broadcast')
+    async broadcastNotification(
+        @CurrentUser() admin: AuthUser,
+        @Body() dto: BroadcastNotificationDto,
+    ) {
+        this.logger.log(`Admin ${admin.id} broadcasting notification: ${dto.title}`);
+
+        // Get all user IDs
+        const users = await this.db
+            .select({ id: schema.profiles.id })
+            .from(schema.profiles);
+
+        const userIds = users.map(u => u.id);
+
+        if (userIds.length === 0) {
+            return { success: false, message: 'No users found' };
+        }
+
+        const { sent, failed } = await this.notificationService.sendToUsers({
+            userIds,
+            title: dto.title,
+            body: dto.body,
+            category: dto.category || 'alert',
+            data: dto.data,
+        });
+
+        return {
+            success: true,
+            message: `Broadcast complete. Sent: ${sent}, Failed: ${failed}`,
+            sent,
+            failed,
+        };
     }
 }
